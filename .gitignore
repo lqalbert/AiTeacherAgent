@@ -1,0 +1,11 @@
+node_modules/
+client/node_modules/
+client/dist/
+uploads/*
+!uploads/.gitkeep
+data/
+.env
+.DS_Store
+*.db
+*.tar.gz
+deploy/*.tar.gz

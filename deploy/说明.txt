@@ -1,0 +1,48 @@
+【部署说明】与 QuizWiz 相同思路：代码放 ~/AiTeacherAgent，PM2/systemd 跑 Node，Nginx 反代。
+
+推荐路径（与 QuizWiz 的 ~/QuizWiz 并列）：
+  /home/ubuntu/AiTeacherAgent/
+
+1) 环境变量
+   cd ~/AiTeacherAgent
+   cp deploy/env.server.template .env
+   nano .env
+   填好 XFYUN_*、DEEPSEEK_API_KEY 等。
+
+2) 依赖与构建（在服务器上）
+   npm install --omit=dev
+   npm install --prefix client
+   npm run build
+
+3) PM2 启动（与 QuizWiz 的 quizwiz-api 并列，勿删 quizwiz-api）
+   pm2 delete aiteacher-agent 2>/dev/null
+   pm2 start deploy/ecosystem.config.cjs
+   pm2 save
+
+   或使用 systemd：
+   sudo cp deploy/aiteacher-agent.service /etc/systemd/system/
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now aiteacher-agent
+
+4) Nginx（测试用 IP，端口 8080，不影响 QuizWiz 的 443）
+   sudo cp deploy/nginx-ip-8080.conf /etc/nginx/sites-available/aiteacher.conf
+   sudo ln -sf /etc/nginx/sites-available/aiteacher.conf /etc/nginx/sites-enabled/
+   sudo nginx -t && sudo systemctl reload nginx
+   安全组/防火墙放行 TCP 8080
+
+5) 验证
+   bash deploy/verify.sh http://127.0.0.1:3200
+   curl -s http://118.24.107.252:8080/api/health
+
+6) 本机更新发版
+
+   方式 A - 压缩包（SFTP 慢时推荐）：
+     本机: bash deploy/pack-for-upload.sh
+     宝塔「文件」上传 /tmp/AiTeacherAgent-deploy.tar.gz 到 /home/ubuntu/
+     服务器: cd ~ && bash AiTeacherAgent/deploy/unpack-and-deploy.sh ~/AiTeacherAgent-deploy.tar.gz
+
+   方式 B - rsync（需先 ssh-copy-id ubuntu@118.24.107.252）：
+     bash deploy/rsync-deploy.sh
+
+   方式 C - 服务器 git pull：
+     cd ~/AiTeacherAgent && bash deploy/publish-on-server.sh

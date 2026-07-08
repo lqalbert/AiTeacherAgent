@@ -1,0 +1,585 @@
+:root {
+  font-family: 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  line-height: 1.5;
+  color: #1f1f1f;
+  background: #f5f7fa;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.page.center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+}
+
+.home-page .session-title-row {
+  align-items: center;
+}
+
+.home-page .round-list {
+  margin-top: 4px;
+  padding-left: 8px;
+  border-left: 2px solid #e8e8e8;
+}
+
+.home-page .round-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  flex-wrap: wrap;
+}
+
+.home-page .round-list-actions {
+  flex-shrink: 0;
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+/* Classroom */
+.classroom-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #111;
+}
+
+.classroom-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #1a1a1a;
+  color: #fff;
+  flex-wrap: wrap;
+  z-index: 10;
+}
+
+.classroom-toolbar .ant-typography {
+  color: #fff !important;
+}
+
+.classroom-alert {
+  background: #fff2e8;
+  color: #d4380d;
+  padding: 8px 16px;
+  text-align: center;
+  font-size: 14px;
+}
+
+.classroom-alert-hint {
+  margin-top: 6px;
+  color: #873800;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.classroom-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: #000;
+}
+
+.classroom-stage.classroom-split {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  min-height: 0;
+}
+
+.classroom-ppt-pane {
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  position: relative;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.classroom-ppt-pane .ppt-viewer-wrap {
+  width: 100%;
+  height: 100%;
+}
+
+/* 右侧歌词式字幕栏：占据 PPT 之外剩余宽度 */
+.subtitle-lyrics-panel {
+  flex: 1 1 240px;
+  min-width: 240px;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #161616 0%, #101010 100%);
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.subtitle-lyrics-panel-header {
+  padding: 12px 16px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.55);
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.subtitle-lyrics-panel-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 24px 16px 32px;
+  scroll-behavior: smooth;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 28px,
+    #000 calc(100% - 28px),
+    transparent 100%
+  );
+}
+
+.subtitle-lyrics-panel-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.subtitle-lyrics-panel-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.subtitle-lyrics-empty {
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 14px;
+  line-height: 1.6;
+  text-align: center;
+  padding: 48px 12px;
+}
+
+.subtitle-lyrics-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.subtitle-lyrics-item {
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.subtitle-lyrics-item.is-past {
+  opacity: 0.38;
+  transform: scale(0.96);
+}
+
+.subtitle-lyrics-item.is-current {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.subtitle-lyrics-item.is-current .subtitle-lyrics-text {
+  font-weight: 600;
+  text-shadow: 0 0 20px rgba(22, 119, 255, 0.35);
+}
+
+.subtitle-lyrics-item.is-upcoming {
+  opacity: 0.22;
+  transform: scale(0.94);
+}
+
+.subtitle-lyrics-text {
+  line-height: 1.65;
+  word-break: normal;
+  overflow-wrap: break-word;
+  text-align: left;
+}
+
+.subtitle-lyrics-text.has-bg {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
+.subtitle-lyrics-panel .subtitle-speaker {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.78em;
+  font-weight: 600;
+  opacity: 0.75;
+}
+
+.classroom-footer {
+  padding: 8px 16px;
+  background: #1a1a1a;
+  text-align: center;
+}
+
+.classroom-footer .ant-typography {
+  color: rgba(255, 255, 255, 0.45) !important;
+}
+
+.replay-controls {
+  padding: 10px 16px;
+  background: #1a1a1a;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.replay-controls .ant-typography,
+.replay-controls .ant-btn {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
+.replay-controls .ant-btn:disabled {
+  color: rgba(255, 255, 255, 0.25) !important;
+}
+
+.replay-play-btn {
+  font-weight: 500;
+}
+
+.replay-time {
+  min-width: 96px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.65) !important;
+}
+
+.replay-slider {
+  flex: 1;
+  min-width: 160px;
+  max-width: 420px;
+  margin: 0 8px !important;
+}
+
+.replay-speed {
+  width: 72px;
+}
+
+.replay-hint {
+  color: rgba(255, 255, 255, 0.45) !important;
+  font-size: 13px;
+}
+
+/* PPT Viewer */
+.ppt-viewer-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.ppt-viewer-wrap:fullscreen,
+.ppt-viewer-wrap:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+  max-width: 100vw;
+  max-height: 100vh;
+  background: #000;
+}
+
+.ppt-viewer-canvas {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.ppt-aspect-box {
+  flex-shrink: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.ppt-slide-stage {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.ppt-slide-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ppt-slide-current {
+  position: relative;
+}
+
+.ppt-slide-view {
+  line-height: normal;
+}
+
+.ppt-slide-view svg {
+  display: block;
+  vertical-align: top;
+}
+
+.ppt-slide-outgoing {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.ppt-aspect-box .pptx-preview-wrapper {
+  margin: 0 !important;
+  overflow: hidden !important;
+}
+
+/* 隐藏 pptx-preview 内置翻页按钮与页码，使用工具栏控制 */
+.ppt-viewer-canvas [class*='pptx-preview-wrapper-next'],
+.ppt-viewer-canvas [class*='pagination'],
+.ppt-viewer-canvas [class*='Pagination'] {
+  display: none !important;
+}
+
+.ppt-overlay-msg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 18px;
+  z-index: 2;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.ppt-overlay-msg.ppt-error {
+  color: #ff7875;
+}
+
+.ppt-slide-indicator {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  z-index: 3;
+}
+
+/* Subtitle - 全屏 PPT 浮层（最多 4 行，底衬仅包裹文字） */
+.ppt-viewer-wrap .subtitle-overlay {
+  display: none;
+}
+
+.ppt-viewer-wrap:fullscreen .subtitle-overlay,
+.ppt-viewer-wrap:-webkit-full-screen .subtitle-overlay {
+  display: block;
+}
+
+.subtitle-overlay {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(86vw, 720px);
+  z-index: 5;
+  pointer-events: none;
+}
+
+.subtitle-lyrics {
+  text-align: center;
+}
+
+.subtitle-lyrics-scroll {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  max-height: calc(1.45em * 4 + 12px);
+  overflow: hidden;
+}
+
+.subtitle-line-wrap {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  max-width: min(50vw, 720px);
+}
+
+.subtitle-lyrics .subtitle-line {
+  display: inline-block;
+  margin: 0;
+  padding: 0;
+  max-width: 100%;
+  font-weight: 500;
+  line-height: 1.45;
+  letter-spacing: 0.02em;
+  word-break: normal;
+  overflow-wrap: break-word;
+  text-align: center;
+  text-shadow:
+    0 0 2px rgba(0, 0, 0, 0.95),
+    0 1px 3px rgba(0, 0, 0, 0.85),
+    -1px 0 1px rgba(0, 0, 0, 0.75),
+    1px 0 1px rgba(0, 0, 0, 0.75);
+  opacity: 1;
+  transition: opacity 0.4s ease;
+}
+
+.subtitle-lyrics .subtitle-line.has-bg {
+  padding: 2px 10px;
+  border-radius: 4px;
+  text-shadow: none;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.25);
+}
+
+.subtitle-lyrics .subtitle-line.is-old {
+  opacity: 0.45;
+}
+
+.subtitle-lyrics .subtitle-line.is-prev {
+  opacity: 0.72;
+}
+
+.subtitle-lyrics .subtitle-line.is-current {
+  opacity: 1;
+}
+
+.subtitle-lyrics .subtitle-line.is-exiting {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.subtitle-lyrics .subtitle-speaker {
+  display: inline-block;
+  margin-right: 0.35em;
+  font-size: 0.82em;
+  font-weight: 600;
+  opacity: 0.92;
+  vertical-align: baseline;
+}
+
+.subtitle-overlay.draggable {
+  pointer-events: auto;
+  transform: none;
+  left: 10%;
+  width: max-content;
+  max-width: min(50vw, 720px);
+}
+
+.subtitle-settings-form {
+  max-width: 280px;
+}
+
+.report-page .page-header {
+  margin-bottom: 16px;
+}
+
+/* Mind map */
+.mind-map {
+  overflow-x: auto;
+  padding: 8px 4px 16px;
+}
+
+.mind-map-node {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.mind-map-label {
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: #f0f5ff;
+  border: 1px solid #adc6ff;
+  color: #1f1f1f;
+  font-size: 14px;
+  line-height: 1.4;
+  white-space: normal;
+  max-width: 280px;
+  flex-shrink: 0;
+}
+
+.mind-map-depth-2 > .mind-map-label {
+  background: #f6ffed;
+  border-color: #b7eb8f;
+}
+
+.mind-map-depth-3 > .mind-map-label {
+  background: #fff7e6;
+  border-color: #ffd591;
+  font-size: 13px;
+}
+
+.mind-map-depth-4 > .mind-map-label {
+  background: #fafafa;
+  border-color: #d9d9d9;
+  font-size: 12px;
+}
+
+.mind-map-root > .mind-map-label {
+  background: #1677ff;
+  color: #fff;
+  border-color: #1677ff;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.mind-map-children {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  margin-left: 20px;
+  padding-left: 18px;
+  border-left: 2px solid #d9d9d9;
+  position: relative;
+}
+
+.mind-map-children > .mind-map-node {
+  position: relative;
+}
+
+.mind-map-children > .mind-map-node::before {
+  content: '';
+  position: absolute;
+  left: -18px;
+  top: 50%;
+  width: 18px;
+  height: 2px;
+  background: #d9d9d9;
+}

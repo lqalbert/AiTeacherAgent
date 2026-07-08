@@ -1,0 +1,27 @@
+{
+  "name": "ai-teacher-agent",
+  "private": true,
+  "type": "module",
+  "description": "智能课堂助手：PPT 放映 + 实时字幕 + AI 课后分析",
+  "scripts": {
+    "setup": "npm install && cd client && npm install",
+    "predev": "node scripts/free-port.js 3200",
+    "dev": "concurrently -n server,client -c blue,green \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "node scripts/dev-server.js",
+    "dev:client": "npm run dev --prefix client",
+    "build": "npm run build --prefix client",
+    "start": "node server/index.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "cors": "^2.8.5",
+    "docx": "^9.5.0",
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0",
+    "multer": "^1.4.5-lts.2",
+    "ws": "^8.18.1"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
