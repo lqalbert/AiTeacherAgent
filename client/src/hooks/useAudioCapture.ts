@@ -111,6 +111,16 @@ export function useAudioCapture(
   const start = useCallback(async () => {
     stop()
     setError(null)
+    if (!window.isSecureContext) {
+      setError(
+        '麦克风需要在 HTTPS 或 localhost 下使用。当前为 HTTP + IP 访问，浏览器会禁用麦克风。请改用 https:// 域名访问本站点。',
+      )
+      return
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError('当前浏览器不支持麦克风，请使用 Chrome / Edge / Safari 最新版')
+      return
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
