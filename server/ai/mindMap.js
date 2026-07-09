@@ -1,7 +1,6 @@
 import { countMindMapNodes, normalizeMindMap } from '../utils/mindMap.js'
 
 const PROVIDER = process.env.AI_PROVIDER || 'deepseek'
-const TRANSCRIPT_LIMIT = 12000
 
 async function chatCompletion(messages, { jsonMode = true, temperature = 0.3 } = {}) {
   if (PROVIDER === 'dashscope') {
@@ -74,54 +73,50 @@ function parseJsonSafe(text) {
   return JSON.parse(jsonMatch[0])
 }
 
-function buildSlideOutline(transcriptBySlide) {
-  return Object.entries(transcriptBySlide || {})
-    .map(([slide, text]) => {
-      const page = Number(slide) + 1
-      const content = String(text || '').trim()
-      if (!content) return null
-      return `【第${page}页】${content.length > 600 ? `${content.slice(0, 600)}…` : content}`
-    })
-    .filter(Boolean)
-    .join('\n\n')
+function buildSlideOutline(evidence) {
+  if (evidence?.pages?.length) {
+    return evidence.pages
+      .filter((p) => p.pptText || p.teacherText)
+      .map((p) => {
+        const lines = [`【第${p.index + 1}页·${p.status}】`]
+        if (p.pptText) lines.push(`课件：${p.pptText.length > 300 ? `${p.pptText.slice(0, 300)}…` : p.pptText}`)
+        if (p.teacherText) {
+          const t = p.teacherText.length > 500 ? `${p.teacherText.slice(0, 500)}…` : p.teacherText
+          lines.push(`讲解：${t}`)
+        }
+        return lines.join('\n')
+      })
+      .join('\n\n')
+  }
+  return ''
 }
 
 /**
- * 独立 AI 调用：基于转写 + 课堂分析，生成知识结构思维导图
+ * 独立 AI 调用：基于课件+转写证据，生成知识结构思维导图
  */
-export async function generateMindMap({ title, transcript, transcriptBySlide, analysis }) {
-  const slideOutline = buildSlideOutline(transcriptBySlide)
-  const transcriptExcerpt =
-    (transcript || '').length > TRANSCRIPT_LIMIT
-      ? `${transcript.slice(0, TRANSCRIPT_LIMIT)}\n\n（转写已截断，请结合按页大纲理解完整内容）`
-      : transcript || '（无转写）'
+export async function generateMindMap({ evidence, analysis }) {
+  const slideOutline = buildSlideOutline(evidence)
+  const transcriptExcerpt = evidence?.fullTranscript || '（无转写）'
+  const pageEvidence = evidence?.pageEvidence || ''
 
-  const prompt = `你是一位专业的「知识结构化」教研专家。请仔细阅读本节课转写与教研分析，提炼**准确、完整、可复习**的思维导图。
-
-## 任务目标
-将本节课讲授的知识组织成树形思维导图，帮助学生一眼看清「讲了什么、怎么分类、关键细节是什么」。
+  const prompt = `你是一位专业的「知识结构化」教研专家。请仔细阅读本节课**课件内容与教师口述证据**，提炼准确、可复习的思维导图。
 
 ## 硬性要求
-1. **只写课堂里真正讲到的内容**，禁止编造转写中未出现的概念、公式或例子
-2. 根节点 label = 本节课核心主题（8-16字，准确概括）
-3. 一级分支 4-6 个：按课堂讲授顺序或知识模块划分（如「概念与定义」「类型与分类」「用法与规则」「例题与技巧」「易错点与对比」等，按学科选用合适模块名）
-4. 每个一级分支下 2-5 个二级节点；重要分支可再展开三级、四级，但整图最多 4 层
-5. 叶子节点必须是**具体知识点**（定义要点、公式、规则、例句、步骤、对比项等），不要空泛标题
-6. 课堂「重点」必须在图中对应分支体现；「难点」可单独设分支或在相关节点下标注
-7. 每个 label 简洁精准，不超过 24 字；优先使用转写中的原词、原表述
-8. 节点总数（含根节点）建议 15-35 个，信息密度适中
+1. **只写课堂上真正讲到的内容**（课件+口述），禁止依据标题猜测，禁止编造
+2. 根节点 = 本节课实际讲授的核心主题（从证据归纳，8-16字）
+3. 一级分支 4-6 个，按课堂实际讲授顺序组织
+4. 叶子节点必须是具体知识点（定义、公式、规则、例句等），不要空泛标题
+5. 课堂「重点」须在图中体现；「难点」可单独分支标注
+6. label 不超过 24 字，优先使用教师原词
 
-## 课程信息
-标题：${title}
-
-## 教研分析（辅助定位重点，仍以转写为准）
+## 教研分析（辅助，以证据为准）
 - 总结：${analysis?.summary || '（无）'}
 - 重点：${(analysis?.keyPoints || []).join('；') || '（无）'}
 - 难点：${(analysis?.difficultPoints || []).join('；') || '（无）'}
-- 知识点标签：${(analysis?.knowledgeTags || []).join('、') || '（无）'}
+- 知识点：${(analysis?.knowledgeTags || []).join('、') || '（无）'}
 
-## 按页转写大纲
-${slideOutline || '（无按页分段）'}
+## 按页证据（课件+讲解）
+${pageEvidence || slideOutline || '（无）'}
 
 ## 完整转写
 ${transcriptExcerpt}
@@ -160,7 +155,7 @@ ${transcriptExcerpt}
   )
 
   const parsed = parseJsonSafe(content)
-  const mindMap = normalizeMindMap(parsed.mindMap || parsed, title)
+  const mindMap = normalizeMindMap(parsed.mindMap || parsed, analysis?.summary?.slice(0, 16) || '本节课')
 
   if ((mindMap.children?.length ?? 0) < 2) {
     throw new Error('AI 未能生成有效思维导图，请重试')
