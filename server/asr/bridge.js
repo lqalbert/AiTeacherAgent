@@ -17,6 +17,8 @@ import { buildXfyunWsUrl, parseXfyunMessage } from './xfyunProxy.js'
 import { stripSubtitlePunctuation } from './subtitleText.js'
 
 const IAT_MAX_MS = 50_000
+/** 上游未就绪时缓存约 4 秒音频（40ms/帧） */
+const MAX_UPSTREAM_PENDING = 100
 
 function parseStoredText(raw) {
   const text = String(raw || '').trim()
@@ -41,7 +43,9 @@ export function createAsrBridge({
   let llmSessionId = crypto.randomUUID()
   let llmReconnectTimer = null
   let llmLiveEmitter = null
-  let polishChain = Promise.resolve()
+  let closed = false
+  /** @type {Buffer[]} */
+  const pendingUpstream = []
 
   const sendClient = (payload) => {
     if (clientWs.readyState === 1) {
@@ -55,41 +59,83 @@ export function createAsrBridge({
     aiPolish: isTranscriptPolishEnabled(),
   })
 
-  const emitFinalText = (rawText) => {
+  const flushPendingUpstream = () => {
+    if (!upstream || upstream.readyState !== 1) return
+    while (pendingUpstream.length > 0) {
+      const chunk = pendingUpstream.shift()
+      try {
+        upstream.send(chunk)
+      } catch {
+        break
+      }
+    }
+  }
+
+  const sendUpstreamAudio = (buf) => {
+    if (provider === 'iat') {
+      if (upstream?.readyState === 1 && iatOpened) {
+        upstream.send(buildIatAudioFrame(buf.toString('base64'), 1))
+      } else {
+        pendingUpstream.push(buf)
+        if (pendingUpstream.length > MAX_UPSTREAM_PENDING) pendingUpstream.shift()
+      }
+      return
+    }
+
+    if (upstream?.readyState === 1) {
+      flushPendingUpstream()
+      try {
+        upstream.send(buf)
+      } catch {
+        pendingUpstream.push(buf)
+      }
+      return
+    }
+
+    pendingUpstream.push(buf)
+    if (pendingUpstream.length > MAX_UPSTREAM_PENDING) pendingUpstream.shift()
+  }
+
+  /**
+   * 最终句落库；可选推送客户端。
+   * AI 校对仅作后台优化，失败绝不撤销原文。
+   */
+  const commitFinalText = (rawText, { pushClient = true } = {}) => {
     const { speaker, text } = parseStoredText(rawText)
     if (!text) return
 
-    polishChain = polishChain
-      .then(async () => {
-        let finalText = text
-        let aiPolished = false
+    const display = stripSubtitlePunctuation(text)
+    if (pushClient && display) {
+      sendClient({
+        type: 'live',
+        text: display,
+        stable: true,
+        speaker: speaker > 0 ? speaker : null,
+        slideIndex: getSlideIndex(),
+        aiPolished: false,
+      })
+    }
 
-        if (isTranscriptPolishEnabled()) {
-          try {
-            const result = await polishTranscript(text, getContext?.() ?? {})
-            finalText = result.text
-            aiPolished = result.changed
-          } catch (err) {
-            console.warn('[asr/polish]', err.message)
-          }
-        }
+    const storeText = speaker > 0 ? `[说话人${speaker}] ${text}` : text
+    onFinalText(storeText)
 
-        const display = stripSubtitlePunctuation(finalText)
-        if (!display || display.length < 2) return
+    if (!isTranscriptPolishEnabled()) return
 
+    polishTranscript(text, getContext?.() ?? {})
+      .then((result) => {
+        if (!result?.changed || !result.text) return
+        const polishedDisplay = stripSubtitlePunctuation(result.text)
+        if (!polishedDisplay || polishedDisplay === display) return
         sendClient({
           type: 'live',
-          text: display,
+          text: polishedDisplay,
           stable: true,
           speaker: speaker > 0 ? speaker : null,
           slideIndex: getSlideIndex(),
-          aiPolished,
+          aiPolished: true,
         })
-
-        const storeText = speaker > 0 ? `[说话人${speaker}] ${finalText}` : finalText
-        onFinalText(storeText)
       })
-      .catch((err) => console.warn('[asr/polish/queue]', err.message))
+      .catch((err) => console.warn('[asr/polish]', err.message))
   }
 
   const cleanupUpstream = () => {
@@ -132,9 +178,21 @@ export function createAsrBridge({
     }
 
     if (parsed.type === 'result' && parsed.text) {
-      if (!parsed.isFinal) return
+      if (!parsed.isFinal) {
+        const display = stripSubtitlePunctuation(parsed.text)
+        if (display) {
+          sendClient({
+            type: 'live',
+            text: display,
+            stable: false,
+            speaker: null,
+            slideIndex: getSlideIndex(),
+          })
+        }
+        return
+      }
       if (parsed.text.trim()) {
-        emitFinalText(parsed.text)
+        commitFinalText(parsed.text)
       }
     }
   }
@@ -154,8 +212,17 @@ export function createAsrBridge({
     const roleType = Number(process.env.XFYUN_ASR_ROLE_TYPE ?? 0)
     llmLiveEmitter = createRtasrLlmLiveEmitter({
       roleSeparation: roleType === 2,
-      sendLive: () => {},
-      onStoreText: emitFinalText,
+      sendLive: ({ text, stable, speaker }) => {
+        sendClient({
+          type: 'live',
+          text,
+          stable: Boolean(stable),
+          speaker: speaker ?? null,
+          slideIndex: getSlideIndex(),
+        })
+      },
+      // 上屏已由 sendLive 完成；此处仅落库，避免双重推送
+      onStoreText: (text) => commitFinalText(text, { pushClient: false }),
     })
 
     upstream = new WebSocket(
@@ -174,6 +241,7 @@ export function createAsrBridge({
 
     upstream.on('open', () => {
       sendClient(connectedPayload('rtasr_llm'))
+      flushPendingUpstream()
     })
 
     upstream.on('message', (data) => {
@@ -193,6 +261,7 @@ export function createAsrBridge({
 
       if (parsed.type === 'started') {
         sendClient(connectedPayload('rtasr_llm'))
+        flushPendingUpstream()
         return
       }
 
@@ -203,11 +272,12 @@ export function createAsrBridge({
 
     upstream.on('close', () => {
       llmLiveEmitter?.flush()
+      if (closed) return
       if (clientWs.readyState === 1 && !llmReconnectTimer) {
         llmReconnectTimer = setTimeout(() => {
           llmReconnectTimer = null
-          if (clientWs.readyState === 1) connectRtasrLlm()
-        }, 400)
+          if (!closed && clientWs.readyState === 1) connectRtasrLlm()
+        }, 300)
         return
       }
       sendClient({ type: 'xfyun_closed' })
@@ -224,6 +294,7 @@ export function createAsrBridge({
 
     upstream.on('open', () => {
       sendClient(connectedPayload('rtasr'))
+      flushPendingUpstream()
     })
 
     upstream.on('message', (data) => {
@@ -263,6 +334,7 @@ export function createAsrBridge({
       upstream.send(buildIatFirstFrame(appId))
       iatOpened = true
       sendClient(connectedPayload('iat'))
+      flushPendingUpstream()
       scheduleIatReconnect()
     })
 
@@ -292,13 +364,7 @@ export function createAsrBridge({
   const handleClientMessage = (data) => {
     if (Buffer.isBuffer(data) || data instanceof ArrayBuffer) {
       const buf = Buffer.isBuffer(data) ? data : Buffer.from(data)
-      if (provider === 'iat') {
-        if (upstream?.readyState === 1 && iatOpened) {
-          upstream.send(buildIatAudioFrame(buf.toString('base64'), 1))
-        }
-      } else if (upstream?.readyState === 1) {
-        upstream.send(buf)
-      }
+      sendUpstreamAudio(buf)
       return
     }
 
@@ -322,6 +388,8 @@ export function createAsrBridge({
   }
 
   const close = () => {
+    closed = true
+    llmLiveEmitter?.flush()
     if (provider === 'iat' && upstream?.readyState === 1) {
       try {
         upstream.send(buildIatAudioFrame('', 2))
@@ -341,6 +409,7 @@ export function createAsrBridge({
         // ignore
       }
     }
+    pendingUpstream.length = 0
     cleanupUpstream()
   }
 

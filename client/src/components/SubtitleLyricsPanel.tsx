@@ -90,6 +90,7 @@ export function SubtitleLyricsPanel({
                     isCurrent ? 'is-current' : '',
                     isUpcoming ? 'is-upcoming' : '',
                     line.status === 'past' ? 'is-past' : '',
+                    line.interim ? 'is-interim' : '',
                   ]
                     .filter(Boolean)
                     .join(' ')}

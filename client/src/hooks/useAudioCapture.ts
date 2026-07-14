@@ -13,7 +13,7 @@ const CHUNK_SAMPLES = 640
 type Options = {
   /** 检测到用户开始说话 */
   onSpeechStart?: () => void
-  /** 静音超过阈值，可断开转写连接 */
+  /** 静音超过阈值回调（不再用于断连） */
   onSilence?: () => void
   silenceMs?: number
 }
@@ -54,6 +54,7 @@ export function useAudioCapture(
   const streamRef = useRef<MediaStream | null>(null)
   const ctxRef = useRef<AudioContext | null>(null)
   const processorRef = useRef<ScriptProcessorNode | null>(null)
+  const gainRef = useRef<GainNode | null>(null)
   const bufferRef = useRef<Float32Array>(new Float32Array(0))
   const onPcmRef = useRef(onPcm)
   const optionsRef = useRef(options)
@@ -75,6 +76,8 @@ export function useAudioCapture(
   const stop = useCallback(() => {
     processorRef.current?.disconnect()
     processorRef.current = null
+    gainRef.current?.disconnect()
+    gainRef.current = null
     ctxRef.current?.close().catch(() => {})
     ctxRef.current = null
     streamRef.current?.getTracks().forEach((t) => t.stop())
@@ -122,19 +125,31 @@ export function useAudioCapture(
       return
     }
     try {
+      // 关闭 noiseSuppression，减少课堂小声/方言被抹掉；AGC 保留以抬升音量
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
+          sampleRate: TARGET_SAMPLE_RATE,
           echoCancellation: true,
-          noiseSuppression: true,
+          noiseSuppression: false,
           autoGainControl: true,
         },
       })
       streamRef.current = stream
 
-      const ctx = new AudioContext({ latencyHint: 'interactive' })
+      const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+      const ctx = new Ctx({ sampleRate: TARGET_SAMPLE_RATE, latencyHint: 'interactive' })
       ctxRef.current = ctx
+      if (ctx.state === 'suspended') {
+        await ctx.resume().catch(() => {})
+      }
+
       const source = ctx.createMediaStreamSource(stream)
+      // 静音节点：保持处理图运行，但不回放麦克风（避免啸叫 / 浏览器压麦）
+      const silentGain = ctx.createGain()
+      silentGain.gain.value = 0
+      gainRef.current = silentGain
+
       const processor = ctx.createScriptProcessor(4096, 1, 1)
       processorRef.current = processor
 
@@ -157,7 +172,8 @@ export function useAudioCapture(
       }
 
       source.connect(processor)
-      processor.connect(ctx.destination)
+      processor.connect(silentGain)
+      silentGain.connect(ctx.destination)
       setActive(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : '无法访问麦克风')

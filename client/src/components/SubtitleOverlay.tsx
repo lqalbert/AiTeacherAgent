@@ -16,7 +16,9 @@ export function SubtitleOverlay({ lines, style, onStylePositionChange }: Props) 
   const [dragging, setDragging] = useState(false)
   const dragStart = useRef({ x: 0, y: 0, left: 0, top: 0 })
 
-  const displayLines = lines.filter((l) => l.text && l.status !== 'upcoming').slice(-MAX_LINES)
+  const displayLines = lines
+    .filter((l) => l.text && l.status !== 'upcoming')
+    .slice(-MAX_LINES)
 
   const positionStyle: React.CSSProperties =
     style.position === 'custom' && style.customX != null && style.customY != null
@@ -108,7 +110,14 @@ export function SubtitleOverlay({ lines, style, onStylePositionChange }: Props) 
           return (
             <div key={line.id} className="subtitle-line-wrap">
               <div
-                className={['subtitle-line', depth, showBg ? 'has-bg' : ''].filter(Boolean).join(' ')}
+                className={[
+                  'subtitle-line',
+                  depth,
+                  showBg ? 'has-bg' : '',
+                  line.interim ? 'is-interim' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
                 style={{ color: speakerColor, ...lineBg }}
               >
                 {label && <span className="subtitle-speaker">{label}</span>}

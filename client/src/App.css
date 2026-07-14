@@ -218,6 +218,11 @@ body {
   text-shadow: none;
 }
 
+.subtitle-lyrics-item.is-interim .subtitle-lyrics-text {
+  opacity: 0.78;
+  font-weight: 500;
+}
+
 .subtitle-lyrics-item.is-upcoming {
   opacity: 0.22;
   transform: scale(0.94);
@@ -514,6 +519,10 @@ body {
 
 .subtitle-lyrics .subtitle-line.is-current {
   opacity: 1;
+}
+
+.subtitle-lyrics .subtitle-line.is-interim {
+  opacity: 0.8;
 }
 
 .subtitle-lyrics .subtitle-line.is-exiting {

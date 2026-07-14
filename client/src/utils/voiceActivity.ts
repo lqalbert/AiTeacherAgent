@@ -1,9 +1,9 @@
-/** 连续超过该 RMS 视为有声音 */
-export const SPEECH_RMS_THRESHOLD = 0.01
+/** 连续超过该 RMS 视为有声音（略降阈值，减少方言/小声漏检） */
+export const SPEECH_RMS_THRESHOLD = 0.006
 /** 连续多少帧有声音才触发「开始说话」 */
 export const SPEECH_START_FRAMES = 2
-/** 静音多久后断开转写连接（毫秒） */
-export const SILENCE_DISCONNECT_MS = 30_000
+/** 静音提示阈值（毫秒）；录课中不再据此断开转写 */
+export const SILENCE_DISCONNECT_MS = 60_000
 
 export function pcmRms(float32: Float32Array): number {
   if (float32.length === 0) return 0

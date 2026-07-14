@@ -2,20 +2,22 @@ import { stripSubtitlePunctuation } from './subtitleText.js'
 import { extractSpeakerTexts } from './speakerText.js'
 
 /**
- * B 站 AI 字幕推送：
- * - stable 在 st.type=0（isFinal）时发出
- * - 停顿超时兜底，避免长时间无字幕
- * - 开启角色分离时，按 rl 字段分说话人独立推送
+ * 讯飞大模型实时字幕推送：
+ * - 中间结果 stable=false 立即上屏（可改写）
+ * - 最终结果 stable=true 落库并巩固字幕
+ * - 分片切换时先落地上一段，避免丢句
  */
 export function createRtasrLlmLiveEmitter({ sendLive, onStoreText, roleSeparation = false }) {
   /** @type {Record<number, { id: number, text: string }>} */
   const activeSegBySpeaker = {}
   /** @type {Record<number, string>} */
-  const lastEmittedBySpeaker = {}
+  const lastStoredBySpeaker = {}
+  /** @type {Record<number, string>} */
+  const lastLiveBySpeaker = {}
   let currentSpeaker = 1
   let pauseTimer = null
 
-  const PAUSE_EMIT_MS = 1200
+  const PAUSE_EMIT_MS = 900
 
   function reset() {
     if (pauseTimer) {
@@ -23,20 +25,42 @@ export function createRtasrLlmLiveEmitter({ sendLive, onStoreText, roleSeparatio
       pauseTimer = null
     }
     for (const key of Object.keys(activeSegBySpeaker)) delete activeSegBySpeaker[key]
-    for (const key of Object.keys(lastEmittedBySpeaker)) delete lastEmittedBySpeaker[key]
+    for (const key of Object.keys(lastStoredBySpeaker)) delete lastStoredBySpeaker[key]
+    for (const key of Object.keys(lastLiveBySpeaker)) delete lastLiveBySpeaker[key]
     currentSpeaker = 1
+  }
+
+  function emitLive(speaker, text, stable) {
+    const raw = String(text || '').trim()
+    if (!raw) return
+    const display = stripSubtitlePunctuation(raw)
+    if (!display) return
+
+    const key = speaker > 0 ? speaker : 0
+    // 最终结果允许与中间结果相同；中间结果相同则跳过
+    if (!stable && lastLiveBySpeaker[key] === display) return
+    lastLiveBySpeaker[key] = display
+
+    const spk = speaker > 0 ? speaker : undefined
+    sendLive({ text: display, stable, speaker: spk, raw })
   }
 
   function emitStable(speaker, text) {
     const raw = String(text || '').trim()
     if (!raw) return
     const display = stripSubtitlePunctuation(raw)
-    if (!display || display.length < 2) return
-    if (lastEmittedBySpeaker[speaker] === display) return
+    if (!display) return
 
-    lastEmittedBySpeaker[speaker] = display
+    const key = speaker > 0 ? speaker : 0
+    if (lastStoredBySpeaker[key] === display) {
+      // 仍推一次最终态，确保 UI 从 interim 固化
+      emitLive(speaker, raw, true)
+      return
+    }
+    lastStoredBySpeaker[key] = display
+
+    emitLive(speaker, raw, true)
     const spk = speaker > 0 ? speaker : undefined
-    sendLive({ text: display, stable: true, speaker: spk })
     onStoreText(spk ? `[说话人${spk}] ${raw}` : raw)
   }
 
@@ -45,6 +69,11 @@ export function createRtasrLlmLiveEmitter({ sendLive, onStoreText, roleSeparatio
     if (!piece) return
 
     const prev = activeSegBySpeaker[speaker]
+    // 分片切换：先落盘上一段，避免丢句
+    if (prev && segId !== prev.id && prev.text.trim()) {
+      emitStable(speaker, prev.text)
+    }
+
     if (!prev || segId !== prev.id) {
       activeSegBySpeaker[speaker] = { id: segId, text: piece }
       return
@@ -103,19 +132,28 @@ export function createRtasrLlmLiveEmitter({ sendLive, onStoreText, roleSeparatio
       for (const { speaker, text } of segments) {
         const spk = speaker > 0 ? speaker : 0
         adoptSpeakerSeg(spk, segId, text)
-        if (isFinal && activeSegBySpeaker[spk]?.text) {
-          emitStable(spk, activeSegBySpeaker[spk].text)
+        const current = activeSegBySpeaker[spk]?.text
+        if (!current) continue
+
+        if (isFinal) {
+          emitStable(spk, current)
+        } else {
+          // 中间结果立即上屏，减少「漏听感」
+          emitLive(spk, current, false)
+          schedulePauseEmit()
         }
       }
 
-      if (!isFinal && segments.length > 0) {
-        schedulePauseEmit()
-      } else if (isFinal && pauseTimer) {
+      if (isFinal && pauseTimer) {
         clearTimeout(pauseTimer)
         pauseTimer = null
       }
 
       if (ls) {
+        // 会话尾帧：落盘残留后重置
+        for (const [speaker, seg] of Object.entries(activeSegBySpeaker)) {
+          if (seg.text.trim()) emitStable(Number(speaker), seg.text)
+        }
         reset()
       }
     },

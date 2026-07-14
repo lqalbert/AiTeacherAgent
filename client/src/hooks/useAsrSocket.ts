@@ -11,7 +11,8 @@ type UseAsrOptions = {
   onLive: (text: string, stable: boolean, speaker?: number) => void
 }
 
-const MAX_PENDING_CHUNKS = 24
+/** 约 4 秒缓冲（40ms/帧），重连时尽量不丢句首 */
+const MAX_PENDING_CHUNKS = 100
 
 export function useAsrSocket({ sessionId, enabled, slideIndex, onLive }: UseAsrOptions) {
   const [status, setStatus] = useState<AsrStatus>('idle')
@@ -37,12 +38,12 @@ export function useAsrSocket({ sessionId, enabled, slideIndex, onLive }: UseAsrO
     for (const chunk of pending) ws.send(chunk)
   }, [])
 
-  const cleanup = useCallback(() => {
+  const cleanup = useCallback((keepPending = false) => {
     if (reconnectTimer.current) {
       clearTimeout(reconnectTimer.current)
       reconnectTimer.current = null
     }
-    pendingAudioRef.current = []
+    if (!keepPending) pendingAudioRef.current = []
     if (wsRef.current) {
       wsRef.current.close()
       wsRef.current = null
@@ -50,7 +51,8 @@ export function useAsrSocket({ sessionId, enabled, slideIndex, onLive }: UseAsrO
   }, [])
 
   const connect = useCallback(() => {
-    cleanup()
+    // 重连时保留缓冲音频，避免句首丢失
+    cleanup(true)
     if (!enabledRef.current) return
 
     intentionalCloseRef.current = false
