@@ -265,6 +265,11 @@ export const PptViewer = forwardRef<PptViewerHandle, Props>(function PptViewer(
     void handleNext()
   }, [handleNext])
 
+  const loading =
+    fetching || status === 'loading' || (status === 'ready' && fontStatus === 'loading')
+  const errorMessage = loadError || (parseError ? parseError.message : null)
+  const scale = slideLayout?.scale ?? 1
+
   const handlePointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return
     const target = e.target as HTMLElement | null
@@ -327,11 +332,6 @@ export const PptViewer = forwardRef<PptViewerHandle, Props>(function PptViewer(
     }),
     [handleNext, handlePrev, handleGoTo, presentation?.slides.length],
   )
-
-  const loading =
-    fetching || status === 'loading' || (status === 'ready' && fontStatus === 'loading')
-  const errorMessage = loadError || (parseError ? parseError.message : null)
-  const scale = slideLayout?.scale ?? 1
 
   return (
     <div
