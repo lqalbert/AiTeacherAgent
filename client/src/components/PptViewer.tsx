@@ -6,6 +6,7 @@ import {
   forwardRef,
   useCallback,
   useMemo,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react'
 import {
@@ -31,9 +32,15 @@ type Props = {
   onSlideChange?: (index: number, total: number) => void
   /** 幻灯片渲染尺寸变化（用于外层布局自适应） */
   onLayoutChange?: (layout: { width: number; height: number }) => void
+  /** 用户通过点击/滑动翻页时回调（如暂停回放） */
+  onUserNavigate?: () => void
   /** 渲染在 PPT 容器内，全屏时一并显示（如字幕浮层） */
   overlay?: ReactNode
 }
+
+const SWIPE_MIN_PX = 48
+const TAP_MAX_PX = 12
+const GESTURE_MAX_MS = 900
 
 /** 内部 0 基索引 → 用户看到的页码（1 起） */
 export function toDisplayPage(index: number): number {
@@ -45,7 +52,7 @@ function normalizeIndex(index: number): number {
 }
 
 export const PptViewer = forwardRef<PptViewerHandle, Props>(function PptViewer(
-  { src, onSlideChange, onLayoutChange, overlay },
+  { src, onSlideChange, onLayoutChange, onUserNavigate, overlay },
   ref,
 ) {
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -63,6 +70,9 @@ export const PptViewer = forwardRef<PptViewerHandle, Props>(function PptViewer(
   const slideIndexRef = useRef(0)
   const lastNotifiedRef = useRef({ index: -1, total: 0 })
   const transitioningRef = useRef(false)
+  const pointerStartRef = useRef<{ x: number; y: number; t: number } | null>(null)
+  const onUserNavigateRef = useRef(onUserNavigate)
+  onUserNavigateRef.current = onUserNavigate
 
   const { status, presentation, error: parseError } = usePresentation(fileBuffer)
   const { status: fontStatus, fontSubstitutes } = useFonts(presentation?.fonts, {
@@ -245,6 +255,62 @@ export const PptViewer = forwardRef<PptViewerHandle, Props>(function PptViewer(
     [presentation, notifySlide],
   )
 
+  const navigatePrev = useCallback(() => {
+    onUserNavigateRef.current?.()
+    handlePrev()
+  }, [handlePrev])
+
+  const navigateNext = useCallback(() => {
+    onUserNavigateRef.current?.()
+    void handleNext()
+  }, [handleNext])
+
+  const handlePointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return
+    const target = e.target as HTMLElement | null
+    if (target?.closest?.('.subtitle-overlay.draggable')) return
+    pointerStartRef.current = { x: e.clientX, y: e.clientY, t: Date.now() }
+  }, [])
+
+  const handlePointerUp = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      const start = pointerStartRef.current
+      pointerStartRef.current = null
+      if (!start || !presentation || loading || errorMessage) return
+
+      const target = e.target as HTMLElement | null
+      if (target?.closest?.('.subtitle-overlay.draggable')) return
+
+      const dx = e.clientX - start.x
+      const dy = e.clientY - start.y
+      const dt = Date.now() - start.t
+      if (dt > GESTURE_MAX_MS) return
+
+      // 水平滑动翻页：左滑下一页，右滑上一页
+      if (Math.abs(dx) >= SWIPE_MIN_PX && Math.abs(dx) > Math.abs(dy) * 1.15) {
+        if (dx < 0) navigateNext()
+        else navigatePrev()
+        return
+      }
+
+      // 点击/轻触：左侧约 1/3 上一页，其余下一页（贴近放映习惯）
+      if (Math.abs(dx) <= TAP_MAX_PX && Math.abs(dy) <= TAP_MAX_PX) {
+        const el = canvasRef.current
+        if (!el) return
+        const rect = el.getBoundingClientRect()
+        if (rect.width <= 0) return
+        const relX = e.clientX - rect.left
+        if (relX < rect.width * 0.33) navigatePrev()
+        else navigateNext()
+      }
+    },
+    [presentation, loading, errorMessage, navigateNext, navigatePrev],
+  )
+
+  const handlePointerCancel = useCallback(() => {
+    pointerStartRef.current = null
+  }, [])
+
   useImperativeHandle(
     ref,
     () => ({
@@ -274,7 +340,14 @@ export const PptViewer = forwardRef<PptViewerHandle, Props>(function PptViewer(
     >
       {loading && <div className="ppt-overlay-msg">正在加载 PPT…</div>}
       {errorMessage && <div className="ppt-overlay-msg ppt-error">{errorMessage}</div>}
-      <div ref={canvasRef} className="ppt-viewer-canvas">
+      <div
+        ref={canvasRef}
+        className="ppt-viewer-canvas ppt-touch-nav"
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+        onPointerLeave={handlePointerCancel}
+      >
         {!loading &&
           !errorMessage &&
           presentation &&

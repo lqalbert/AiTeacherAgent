@@ -5,6 +5,8 @@ export type SubtitleStyle = {
   position: 'bottom' | 'top' | 'custom'
   backgroundColor: string
   backgroundOpacity: number
+  /** 课堂页右侧「实时字幕」区域背景色 */
+  panelBackgroundColor: string
   customX?: number
   customY?: number
 }
@@ -16,6 +18,7 @@ export const DEFAULT_SUBTITLE_STYLE: SubtitleStyle = {
   position: 'bottom',
   backgroundColor: '#000000',
   backgroundOpacity: 0,
+  panelBackgroundColor: '#ffffff',
 }
 
 export const SUBTITLE_STYLE_KEY = 'aiteacher_subtitle_style'

@@ -98,7 +98,8 @@ export function ClassroomPage() {
 
   const { status: asrStatus, aiPolish, error: asrError, errorHint: asrErrorHint, sendAudio, stop: stopAsr } = useAsrSocket({
     sessionId,
-    enabled: recording && asrStreaming,
+    // 录课期间保持转写连接，避免静音断开导致字幕缺段、翻页页码不同步
+    enabled: recording,
     slideIndex,
     onLive,
   })
@@ -108,6 +109,7 @@ export function ClassroomPage() {
   }, [])
 
   const handleSilence = useCallback(() => {
+    // 仅刷新字幕展示，不断开转写（断开重连易丢句）
     flushSubtitles()
     setAsrStreaming(false)
   }, [flushSubtitles])
@@ -371,6 +373,7 @@ export function ClassroomPage() {
               src={session.ppt_path}
               onSlideChange={handleSlideChange}
               onLayoutChange={handlePptLayoutChange}
+              onUserNavigate={isReview ? pauseReplay : undefined}
               overlay={
                 <SubtitleOverlay
                   lines={activeSubtitleLines}
@@ -412,7 +415,8 @@ export function ClassroomPage() {
 
       <footer className="classroom-footer">
         <Text type="secondary">
-          快捷键：← → 翻页（先播放本页动画）· F 全屏 · 当前第 {slideIndex + 1}/{slideCount || '?'} 页
+          触屏：左滑/点右侧下一页 · 右滑/点左侧上一页 · 快捷键 ← → · F 全屏 · 当前第{' '}
+          {slideIndex + 1}/{slideCount || '?'} 页
           {isReview ? ' · 空格 播放/暂停' : ''}
         </Text>
       </footer>

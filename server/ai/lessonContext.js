@@ -50,7 +50,8 @@ export async function buildLessonEvidence({
 
     let status = '未翻到'
     if (visited && spoken) status = '已讲解'
-    else if (visited && !spoken) status = '翻过页但未口述'
+    else if (visited && !spoken)
+      status = '翻过页但本页无转写（不能断定未讲授，可能识别中断或页码未同步）'
     else if (!visited && spoken) status = '有口述记录（翻页可能不完整）'
 
     pages.push({ index: i, pptText, teacherText, visited, spoken, status })
@@ -76,17 +77,36 @@ export async function buildLessonEvidence({
   const taughtPages = pages.filter((p) => p.spoken).length
   const pptPages = pptSlides.filter((t) => t.trim()).length
 
+  const pagesVisitedNoSpeech = pages.filter((p) => p.visited && !p.spoken).length
+  const alignmentSparse =
+    statsLikeSparse({ taughtPages, visitedPages: visitedSlides.size, transcriptChars: (transcript || '').length })
+
+  const dataNote = [
+    `课件共 ${pptSlides.length} 页，教师翻到过 ${visitedSlides.size} 页，按页有转写 ${taughtPages} 页，全文约 ${(transcript || '').length} 字。`,
+    pagesVisitedNoSpeech > 0
+      ? `其中 ${pagesVisitedNoSpeech} 页有翻页记录但无本页转写——这通常是转写中断/页码未同步造成，禁止据此断定「教师未讲解该页」。`
+      : '',
+    alignmentSparse
+      ? '按页对齐可能不完整：评价与总结必须优先依据「完整课堂转写」对照课件知识点，不得仅因为口述集中记在第1页就判定只讲了一页。'
+      : '',
+  ]
+    .filter(Boolean)
+    .join('\n')
+
   return {
     pptSlides,
     pages,
     pageEvidence: pageEvidence || '（无按页证据，仅有完整转写）',
     fullTranscript,
+    dataNote,
     stats: {
       pptPageCount: pptSlides.length,
       pptTextPages: pptPages,
       taughtPages,
       visitedPages: visitedSlides.size,
+      pagesVisitedNoSpeech,
       transcriptChars: (transcript || '').length,
+      alignmentSparse,
     },
     meta: {
       roundLabel,
@@ -94,4 +114,10 @@ export async function buildLessonEvidence({
       hasPpt: pptSlides.length > 0,
     },
   }
+}
+
+function statsLikeSparse({ taughtPages, visitedPages, transcriptChars }) {
+  if (visitedPages >= 3 && taughtPages <= 1 && transcriptChars > 80) return true
+  if (visitedPages > taughtPages * 2 && visitedPages - taughtPages >= 2) return true
+  return false
 }

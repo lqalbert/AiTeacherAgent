@@ -416,8 +416,11 @@ wss.on('connection', (clientWs, { sessionId }) => {
       try {
         const msg = JSON.parse(data.toString())
         if (msg.type === 'slide') {
-          currentSlide = Number(msg.slideIndex) || 0
-          slideState.set(sessionId, currentSlide)
+          const n = Number(msg.slideIndex)
+          if (Number.isInteger(n) && n >= 0) {
+            currentSlide = n
+            slideState.set(sessionId, currentSlide)
+          }
         }
       } catch {
         // ignore

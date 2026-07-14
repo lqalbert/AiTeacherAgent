@@ -68,7 +68,7 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: #111;
+  background: #fff;
 }
 
 .classroom-toolbar {
@@ -77,14 +77,19 @@ body {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 16px;
-  background: #1a1a1a;
-  color: #fff;
+  background: #fff;
+  color: #1f1f1f;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   flex-wrap: wrap;
   z-index: 10;
 }
 
 .classroom-toolbar .ant-typography {
-  color: #fff !important;
+  color: #1f1f1f !important;
+}
+
+.classroom-toolbar .ant-badge-status-text {
+  color: rgba(0, 0, 0, 0.65) !important;
 }
 
 .classroom-alert {
@@ -107,7 +112,7 @@ body {
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  background: #000;
+  background: #fff !important;
 }
 
 .classroom-stage.classroom-split {
@@ -123,7 +128,7 @@ body {
   min-height: 0;
   height: 100%;
   position: relative;
-  background: #fff;
+  background: #fff !important;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -134,23 +139,22 @@ body {
   height: 100%;
 }
 
-/* 右侧歌词式字幕栏：占据 PPT 之外剩余宽度 */
+/* 右侧歌词式字幕栏：占据 PPT 之外剩余宽度；背景色由字幕设置自定义 */
 .subtitle-lyrics-panel {
   flex: 1 1 240px;
   min-width: 240px;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, #161616 0%, #101010 100%);
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  background: #fff;
+  border-left: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 .subtitle-lyrics-panel-header {
   padding: 12px 16px 10px;
   font-size: 13px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.55);
   letter-spacing: 0.04em;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
   flex-shrink: 0;
 }
 
@@ -174,12 +178,15 @@ body {
 }
 
 .subtitle-lyrics-panel-scroll::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.18);
   border-radius: 3px;
 }
 
+.subtitle-lyrics-panel.is-dark .subtitle-lyrics-panel-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+}
+
 .subtitle-lyrics-empty {
-  color: rgba(255, 255, 255, 0.35);
   font-size: 14px;
   line-height: 1.6;
   text-align: center;
@@ -208,7 +215,7 @@ body {
 
 .subtitle-lyrics-item.is-current .subtitle-lyrics-text {
   font-weight: 600;
-  text-shadow: 0 0 20px rgba(22, 119, 255, 0.35);
+  text-shadow: none;
 }
 
 .subtitle-lyrics-item.is-upcoming {
@@ -239,27 +246,28 @@ body {
 
 .classroom-footer {
   padding: 8px 16px;
-  background: #1a1a1a;
+  background: #fff;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
   text-align: center;
 }
 
 .classroom-footer .ant-typography {
-  color: rgba(255, 255, 255, 0.45) !important;
+  color: rgba(0, 0, 0, 0.45) !important;
 }
 
 .replay-controls {
   padding: 10px 16px;
-  background: #1a1a1a;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: #fff;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 .replay-controls .ant-typography,
 .replay-controls .ant-btn {
-  color: rgba(255, 255, 255, 0.85) !important;
+  color: rgba(0, 0, 0, 0.85) !important;
 }
 
 .replay-controls .ant-btn:disabled {
-  color: rgba(255, 255, 255, 0.25) !important;
+  color: rgba(0, 0, 0, 0.25) !important;
 }
 
 .replay-play-btn {
@@ -269,7 +277,7 @@ body {
 .replay-time {
   min-width: 96px;
   font-variant-numeric: tabular-nums;
-  color: rgba(255, 255, 255, 0.65) !important;
+  color: rgba(0, 0, 0, 0.65) !important;
 }
 
 .replay-slider {
@@ -284,7 +292,7 @@ body {
 }
 
 .replay-hint {
-  color: rgba(255, 255, 255, 0.45) !important;
+  color: rgba(0, 0, 0, 0.45) !important;
   font-size: 13px;
 }
 
@@ -299,7 +307,7 @@ body {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  background: #fff;
+  background: #fff !important;
 }
 
 .ppt-viewer-wrap:fullscreen,
@@ -309,6 +317,12 @@ body {
   height: 100vh;
   max-width: 100vw;
   max-height: 100vh;
+  background: #000 !important;
+}
+
+.ppt-viewer-wrap:fullscreen .ppt-viewer-canvas,
+.ppt-viewer-wrap:-webkit-full-screen .ppt-viewer-canvas,
+.ppt-viewer-wrap.is-fullscreen .ppt-viewer-canvas {
   background: #000;
 }
 
@@ -321,6 +335,14 @@ body {
   justify-content: center;
   overflow: hidden;
   box-sizing: border-box;
+  background: #fff;
+}
+
+.ppt-viewer-canvas.ppt-touch-nav {
+  touch-action: pan-y;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .ppt-aspect-box {

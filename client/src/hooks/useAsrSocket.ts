@@ -64,6 +64,12 @@ export function useAsrSocket({ sessionId, enabled, slideIndex, onLive }: UseAsrO
 
     ws.onopen = () => {
       setStatus('connected')
+      // 重连后必须立刻同步当前页，否则口述会全部记在旧页/第 1 页
+      try {
+        ws.send(JSON.stringify({ type: 'slide', slideIndex: slideRef.current }))
+      } catch {
+        // ignore
+      }
       flushPendingAudio()
     }
 

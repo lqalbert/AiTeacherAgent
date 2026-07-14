@@ -43,7 +43,14 @@ export function SubtitleSettings({ value, onChange }: Props) {
           showText
         />
       </Form.Item>
-      <Form.Item label="文字底衬颜色">
+      <Form.Item label="实时字幕区背景" extra="课堂页右侧字幕区域背景色">
+        <ColorPicker
+          value={value.panelBackgroundColor || '#ffffff'}
+          onChange={(_, hex) => update({ panelBackgroundColor: hex })}
+          showText
+        />
+      </Form.Item>
+      <Form.Item label="文字底衬颜色" extra="字幕文字背后的衬底（全屏与侧栏均生效）">
         <ColorPicker
           value={value.backgroundColor}
           onChange={(_, hex) => update({ backgroundColor: hex })}

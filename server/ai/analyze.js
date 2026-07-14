@@ -3,26 +3,30 @@ import { chatCompletion, parseJsonSafe } from './chat.js'
 import { buildLessonEvidence } from './lessonContext.js'
 
 const STRICT_SYSTEM =
-  '你是资深教研员与教学督导。所有结论必须严格基于提供的课件原文与课堂转写证据，禁止依据课程标题猜测内容，禁止编造课堂上未出现的知识点、例题或教学行为。输出必须是合法 JSON。'
+  '你是资深教研员与教学督导。所有结论必须严格基于提供的课件原文与课堂转写证据，禁止依据课程标题猜测内容，禁止编造课堂上未出现的知识点、例题或教学行为。按页无转写不等于未讲授。输出必须是合法 JSON。'
 
 async function analyzeLesson(evidence) {
-  const { pageEvidence, fullTranscript, stats, meta } = evidence
+  const { pageEvidence, fullTranscript, stats, meta, dataNote } = evidence
 
   const prompt = `请根据以下**真实课堂证据**（课件各页文字 + 教师各页口述 + 完整转写），分析本节课实际讲授的重难点并撰写总结。
 
 ## 重要原则
 1. **禁止**依据课程标题「${meta.roundLabel || meta.pptFilename || '未知'}」推断教学内容；标题仅供参考
 2. **只能**使用下方课件内容与教师口述中明确出现的信息
-3. 若某页课件有内容但教师未讲透，应在难点中如实指出
+3. **完整转写是主体证据**：若页面状态为「翻过页但本页无转写」，不得推断教师未讲该页，应对照完整转写是否覆盖该页课件知识点
 4. 若教师讲了但课件未写的内容，以口述为准纳入分析
 5. 总结、重点、难点必须具体，避免「本节课内容丰富」「讲解清晰」等空话
+6. 禁止仅因口述集中记在第1页，就输出「只讲了一页、其余页均未讲解」——除非完整转写也完全未涉及后续知识点
+
+## 数据说明（必读）
+${dataNote || '（无）'}
 
 ## 课堂数据
 - 课件页数：${stats.pptPageCount}（含文字页 ${stats.pptTextPages}）
-- 教师有口述的页数：${stats.taughtPages}
+- 翻到过：${stats.visitedPages} 页；按页有转写：${stats.taughtPages} 页
 - 转写字数：约 ${stats.transcriptChars}
 
-## 按页证据（课件 + 讲解对齐，优先阅读）
+## 按页证据（辅助对齐；对齐不全时以完整转写为准）
 ${pageEvidence}
 
 ## 完整课堂转写
@@ -59,27 +63,31 @@ difficultyLevel 为 1-5 整数（3=普通中学课堂难度）。`
 
 /** AI 生成本节课教学评价（严格、可成长） */
 export async function generateLessonEvaluation(evidence, analysis) {
-  const { pageEvidence, fullTranscript, stats } = evidence
+  const { pageEvidence, fullTranscript, stats, dataNote } = evidence
 
   const prompt = `你是一位**高标准、直言不讳**的教学督导。请仅根据下方课堂证据，对本节课教学表现做**严格、具体、可落地**的评价，助力教师专业成长。
 
 ## 评价原则
-1. **不看课程标题**，只看课件内容与教师真实授课
-2. 每一条亮点必须指出**具体页码/环节/原话依据**（如「第3页讲解…时…」）
-3. 每一条改进建议必须**可操作**，指出**具体问题**（如「第5页课件出现X概念，但教师未举例，学生易混淆Y」）
-4. **禁止**空洞套话：如「加强互动」「提高兴趣」「注重启发」「条理清晰」等无证据的评价
-5. 评分从严：3分=达标，4分=良好，5分=优秀；有明显问题时敢于给 2 分
-6. 若转写过少（仅 ${stats.taughtPages} 页有口述），须在评价中说明证据不足对结论的影响
+1. **不看课程标题**，只看课件内容与教师真实授课（以完整转写为主）
+2. 每一条亮点尽量指出**具体知识点/原话依据**；页码仅在按页转写可靠时使用
+3. 每一条改进建议必须**可操作**、针对转写中真实出现的问题
+4. **禁止**空洞套话；**禁止**把「按页无转写」当成「教师未讲该页」
+5. 评分从严但不冤枉：证据不足时写明「转写可能不完整」，不要武断给极低分
+6. 若出现大量「翻过页但无转写」，应点评课堂结构/表达等问题时结合完整转写，而不是结论式写「其余8页均未讲解」
+
+## 数据说明（必读）
+${dataNote || '（无）'}
+（翻到 ${stats.visitedPages} 页，按页有转写 ${stats.taughtPages} 页）
 
 ## 教研分析（辅助，仍以证据为准）
 - 总结：${analysis?.summary || '（无）'}
 - 重点：${(analysis?.keyPoints || []).join('；') || '（无）'}
 - 难点：${(analysis?.difficultPoints || []).join('；') || '（无）'}
 
-## 按页证据
+## 按页证据（辅助）
 ${pageEvidence}
 
-## 完整转写
+## 完整转写（主体）
 ${fullTranscript}
 
 从教学内容准确性、讲解逻辑、重点把握、语言表达与课堂节奏等维度评价。
