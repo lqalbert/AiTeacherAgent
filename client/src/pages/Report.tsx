@@ -67,7 +67,7 @@ export function ReportPage() {
 
   useEffect(() => {
     if (!Number.isInteger(sessionId) || sessionId <= 0) {
-      navigate('/')
+      navigate('/courses')
       return
     }
     const roundParam = searchParams.get('round')
@@ -95,7 +95,7 @@ export function ReportPage() {
     setAnalyzing(true)
     try {
       await analyzeSession(sessionId, viewingRound)
-      message.success(`第 ${viewingRound} 节 AI 报告已生成（含评价、思维导图与习题）`)
+      message.success(`第 ${viewingRound} 节报告已生成`)
       await switchRound(viewingRound)
     } catch (err) {
       message.error(err instanceof Error ? err.message : '分析失败，请检查 API Key 配置')
@@ -148,8 +148,8 @@ export function ReportPage() {
     <div className="page report-page">
       <div className="page-header">
         <Space>
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/')}>
-            返回列表
+          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/courses')}>
+            返回课程
           </Button>
           <Title level={3} style={{ margin: 0 }}>
             {session.title}
@@ -189,10 +189,10 @@ export function ReportPage() {
         </Space>
       </div>
 
-      <Card title={`第 ${viewingRound} 节 · AI 分析报告`} loading={loading && !!report}>
+      <Card title={`第 ${viewingRound} 节 · 课堂报告`} loading={loading && !!report}>
         {!analysis ? (
           <Empty
-            description="该节尚未生成 AI 分析，点击「生成报告」"
+            description="该节尚未生成报告，点击「生成报告」"
             image={Empty.PRESENTED_IMAGE_SIMPLE}
           />
         ) : (
@@ -229,10 +229,10 @@ function AnalysisSection({ analysis }: { analysis: AnalysisResult }) {
         <Card
           title="课堂评价"
           type="inner"
-          extra={<Text type="secondary" style={{ fontSize: 12 }}>AI 生成</Text>}
+          extra={<Text type="secondary" style={{ fontSize: 12 }}>基于本节转写</Text>}
         >
           <Paragraph>{ev.summary}</Paragraph>
-          <Tag color="purple">教学综合评分 {ev.score}/5</Tag>
+          <Tag color="blue">教学综合评分 {ev.score}/5</Tag>
           {ev.dimensions && (
             <div style={{ marginTop: 12 }}>
               <Space wrap>
@@ -271,7 +271,7 @@ function AnalysisSection({ analysis }: { analysis: AnalysisResult }) {
         </Card>
       ) : (
         <Card title="课堂评价" type="inner">
-          <Text type="secondary">暂无评价，点击「重新分析」由 AI 根据转写内容生成</Text>
+          <Text type="secondary">暂无评价，点击「重新分析」根据转写生成</Text>
         </Card>
       )}
       <Card title="课堂总结" type="inner">
@@ -301,13 +301,13 @@ function AnalysisSection({ analysis }: { analysis: AnalysisResult }) {
         <Card
           title="思维导图"
           type="inner"
-          extra={<Text type="secondary" style={{ fontSize: 12 }}>AI 基于转写独立生成</Text>}
+          extra={<Text type="secondary" style={{ fontSize: 12 }}>基于本节转写</Text>}
         >
           <MindMapView root={analysis.mindMap} />
         </Card>
       ) : (
         <Card title="思维导图" type="inner">
-          <Text type="secondary">暂无思维导图，点击「重新分析」由 AI 根据转写内容生成</Text>
+          <Text type="secondary">暂无思维导图，点击「重新分析」根据转写生成</Text>
         </Card>
       )}
     </Space>

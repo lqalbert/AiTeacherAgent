@@ -136,6 +136,29 @@ function runMigrations(dbConn) {
         .run((max?.m ?? 0) + 1, s.id)
     }
   }
+
+  dbConn.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username_hash TEXT NOT NULL UNIQUE,
+      username_cipher TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS auth_tokens (
+      token TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      expires_at TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_auth_tokens_user ON auth_tokens(user_id);
+  `)
+
+  const sessionCols2 = dbConn.prepare(`PRAGMA table_info(sessions)`).all()
+  if (!sessionCols2.some((c) => c.name === 'user_id')) {
+    dbConn.exec(`ALTER TABLE sessions ADD COLUMN user_id INTEGER`)
+  }
 }
 
 export function getDb() {
@@ -251,7 +274,7 @@ function enrichSession(session) {
   }
 }
 
-export function listSessions() {
+export function listSessions(userId) {
   const rows = getDb()
     .prepare(
       `SELECT s.*,
@@ -260,9 +283,10 @@ export function listSessions() {
            JOIN lesson_rounds lr ON lr.id = ar.round_id
            WHERE lr.session_id = s.id LIMIT 1) AS has_analysis
        FROM sessions s
+       WHERE s.user_id = ?
        ORDER BY s.created_at DESC`,
     )
-    .all()
+    .all(userId)
   return rows.map((row) => {
     const enriched = enrichSession(row)
     return {
@@ -278,16 +302,70 @@ export function getSession(id) {
   return enrichSession(session)
 }
 
-export function createSession({ title, pptFilename, pptPath, subtitleStyle }) {
+export function createSession({ title, pptFilename, pptPath, subtitleStyle, userId }) {
+  if (!userId) throw new Error('缺少用户信息')
   const result = getDb()
     .prepare(
-      `INSERT INTO sessions (title, ppt_filename, ppt_path, subtitle_style, next_round_number)
-       VALUES (?, ?, ?, ?, 2)`,
+      `INSERT INTO sessions (title, ppt_filename, ppt_path, subtitle_style, next_round_number, user_id)
+       VALUES (?, ?, ?, ?, 2, ?)`,
     )
-    .run(title, pptFilename || null, pptPath || null, JSON.stringify(subtitleStyle || {}))
+    .run(
+      title,
+      pptFilename || null,
+      pptPath || null,
+      JSON.stringify(subtitleStyle || {}),
+      userId,
+    )
   const sessionId = result.lastInsertRowid
   createRound(sessionId, 1)
   return getSession(sessionId)
+}
+
+export function findUserByUsernameHash(usernameHash) {
+  return getDb().prepare('SELECT * FROM users WHERE username_hash = ?').get(usernameHash)
+}
+
+export function getUserById(id) {
+  return getDb().prepare('SELECT * FROM users WHERE id = ?').get(id)
+}
+
+export function createUser({ usernameHash, usernameCipher, passwordHash }) {
+  const result = getDb()
+    .prepare(
+      `INSERT INTO users (username_hash, username_cipher, password_hash) VALUES (?, ?, ?)`,
+    )
+    .run(usernameHash, usernameCipher, passwordHash)
+  return getUserById(result.lastInsertRowid)
+}
+
+export function createAuthToken(userId, token, expiresAt) {
+  getDb()
+    .prepare(`INSERT INTO auth_tokens (token, user_id, expires_at) VALUES (?, ?, ?)`)
+    .run(token, userId, expiresAt)
+}
+
+export function getAuthToken(token) {
+  return getDb()
+    .prepare(
+      `SELECT t.*, u.username_cipher
+       FROM auth_tokens t
+       JOIN users u ON u.id = t.user_id
+       WHERE t.token = ?`,
+    )
+    .get(token)
+}
+
+export function deleteAuthToken(token) {
+  getDb().prepare(`DELETE FROM auth_tokens WHERE token = ?`).run(token)
+}
+
+export function deleteAuthTokensForUser(userId) {
+  getDb().prepare(`DELETE FROM auth_tokens WHERE user_id = ?`).run(userId)
+}
+
+/** 将历史无主课次挂到指定用户（迁移用） */
+export function assignOrphanSessionsToUser(userId) {
+  getDb().prepare(`UPDATE sessions SET user_id = ? WHERE user_id IS NULL`).run(userId)
 }
 
 export function updateSessionSubtitleStyle(id, subtitleStyle) {

@@ -12,6 +12,22 @@ import { testRtasrLlmConnection } from './asr/rtasrLlmProxy.js'
 import { testRtasrConnection } from './asr/xfyunProxy.js'
 import { runFullAnalysis } from './ai/analyze.js'
 import { isTranscriptPolishEnabled } from './ai/transcriptPolish.js'
+import {
+  addKnowledgeDoc,
+  deleteKnowledgeDoc,
+  getAgentConfig,
+  listKnowledgeDocs,
+  saveAgentConfig,
+} from './agent/configStore.js'
+import {
+  ensureDefaultUsers,
+  getSessionOwned,
+  login as authLogin,
+  logout as authLogout,
+  requireAuth,
+  resolveAuthToken,
+} from './auth/index.js'
+import { hashUsername } from './auth/crypto.js'
 import * as store from './db/store.js'
 import { decodeUploadFilename, safeDiskFilename } from './utils/filename.js'
 import { buildDocxBuffer } from './export/toDocx.js'
@@ -25,6 +41,9 @@ const ASR_PROVIDER = process.env.ASR_PROVIDER || 'rtasr_llm'
 
 fs.mkdirSync(UPLOAD_DIR, { recursive: true })
 store.getDb()
+await ensureDefaultUsers()
+const firstUser = store.findUserByUsernameHash(hashUsername('admin1'))
+if (firstUser) store.assignOrphanSessionsToUser(firstUser.id)
 
 const app = express()
 app.use(cors())
@@ -43,6 +62,16 @@ function mapSessionRow(session) {
   }
 }
 
+function ownedSession(req, res) {
+  const id = Number(req.params.id)
+  const result = getSessionOwned(id, req.auth.userId)
+  if (result.error) {
+    res.status(result.status).json({ message: result.error })
+    return null
+  }
+  return result.session
+}
+
 const storage = multer.diskStorage({
   destination: UPLOAD_DIR,
   filename: (_req, file, cb) => {
@@ -59,8 +88,84 @@ const upload = multer({
   },
 })
 
+const KNOWLEDGE_DIR = path.join(ROOT, 'data', 'knowledge', 'tmp')
+fs.mkdirSync(KNOWLEDGE_DIR, { recursive: true })
+const knowledgeUpload = multer({
+  storage: multer.diskStorage({
+    destination: KNOWLEDGE_DIR,
+    filename: (_req, file, cb) => {
+      cb(null, safeDiskFilename(file.originalname))
+    },
+  }),
+  limits: { fileSize: 30 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase()
+    if (['.txt', '.md', '.pptx'].includes(ext)) cb(null, true)
+    else cb(new Error('知识库仅支持 .txt / .md / .pptx'))
+  },
+})
+
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'aiteacher-agent' })
+})
+
+app.post('/api/auth/login', async (req, res) => {
+  const username = String(req.body?.username || '').trim()
+  const password = String(req.body?.password || '')
+  if (!username || !password) {
+    return res.status(400).json({ message: '请输入账号和密码' })
+  }
+  const result = await authLogin(username, password)
+  if (!result.ok) return res.status(401).json({ message: result.message })
+  res.json(result.data)
+})
+
+app.post('/api/auth/logout', requireAuth, (req, res) => {
+  authLogout(req.auth.token)
+  res.json({ ok: true })
+})
+
+app.get('/api/auth/me', requireAuth, (req, res) => {
+  res.json({ data: { id: req.auth.userId, username: req.auth.username } })
+})
+
+app.get('/api/agent/config', requireAuth, (req, res) => {
+  res.json({ data: getAgentConfig(req.auth.userId) })
+})
+
+app.put('/api/agent/config', requireAuth, (req, res) => {
+  try {
+    const saved = saveAgentConfig(req.auth.userId, req.body || {})
+    res.json({ data: saved })
+  } catch (err) {
+    res.status(400).json({ message: err.message || '保存失败' })
+  }
+})
+
+app.get('/api/agent/knowledge', requireAuth, (req, res) => {
+  res.json({ data: listKnowledgeDocs(req.auth.userId) })
+})
+
+app.post('/api/agent/knowledge', requireAuth, knowledgeUpload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: '请上传文件' })
+    const title = String(req.body.title || '').trim()
+    const originalName = decodeUploadFilename(req.file.originalname)
+    const doc = await addKnowledgeDoc(req.auth.userId, {
+      title: title || originalName,
+      originalName,
+      diskPath: req.file.path,
+    })
+    res.json({ data: doc })
+  } catch (err) {
+    res.status(400).json({ message: err.message || '上传失败' })
+  }
+})
+
+app.delete('/api/agent/knowledge/:id', requireAuth, (req, res) => {
+  const ok = deleteKnowledgeDoc(req.auth.userId, String(req.params.id))
+  if (!ok) return res.status(404).json({ message: '文档不存在' })
+  res.json({ ok: true })
 })
 
 app.get('/api/health/asr', async (_req, res) => {
@@ -92,18 +197,18 @@ app.get('/api/health/asr', async (_req, res) => {
   })
 })
 
-app.get('/api/sessions', (_req, res) => {
-  const sessions = store.listSessions().map(mapSessionRow)
+app.get('/api/sessions', requireAuth, (req, res) => {
+  const sessions = store.listSessions(req.auth.userId).map(mapSessionRow)
   res.json({ data: sessions })
 })
 
-app.get('/api/sessions/:id', (req, res) => {
-  const session = store.getSession(Number(req.params.id))
-  if (!session) return res.status(404).json({ message: '课程不存在' })
+app.get('/api/sessions/:id', requireAuth, (req, res) => {
+  const session = ownedSession(req, res)
+  if (!session) return
   res.json({ data: mapSessionRow(session) })
 })
 
-app.post('/api/sessions', upload.single('ppt'), (req, res) => {
+app.post('/api/sessions', requireAuth, upload.single('ppt'), (req, res) => {
   try {
     const title = String(req.body.title || '').trim() || '未命名课程'
     let subtitleStyle = {}
@@ -121,6 +226,7 @@ app.post('/api/sessions', upload.single('ppt'), (req, res) => {
       pptFilename,
       pptPath: req.file ? `/uploads/${req.file.filename}` : null,
       subtitleStyle,
+      userId: req.auth.userId,
     })
     res.json({
       data: mapSessionRow(session),
@@ -130,16 +236,15 @@ app.post('/api/sessions', upload.single('ppt'), (req, res) => {
   }
 })
 
-app.patch('/api/sessions/:id/subtitle-style', (req, res) => {
-  const id = Number(req.params.id)
-  if (!store.getSession(id)) return res.status(404).json({ message: '课程不存在' })
-  store.updateSessionSubtitleStyle(id, req.body.subtitleStyle || {})
+app.patch('/api/sessions/:id/subtitle-style', requireAuth, (req, res) => {
+  if (!ownedSession(req, res)) return
+  store.updateSessionSubtitleStyle(Number(req.params.id), req.body.subtitleStyle || {})
   res.json({ ok: true })
 })
 
-app.post('/api/sessions/:id/slide', (req, res) => {
+app.post('/api/sessions/:id/slide', requireAuth, (req, res) => {
+  if (!ownedSession(req, res)) return
   const id = Number(req.params.id)
-  if (!store.getSession(id)) return res.status(404).json({ message: '课程不存在' })
   const slideIndex = Number(req.body.slideIndex)
   const eventAtMs = Number(req.body.eventAtMs ?? Date.now())
   if (!Number.isInteger(slideIndex) || slideIndex < 0) {
@@ -149,9 +254,9 @@ app.post('/api/sessions/:id/slide', (req, res) => {
   res.json({ ok: true })
 })
 
-app.post('/api/sessions/:id/transcript', (req, res) => {
+app.post('/api/sessions/:id/transcript', requireAuth, (req, res) => {
+  if (!ownedSession(req, res)) return
   const id = Number(req.params.id)
-  if (!store.getSession(id)) return res.status(404).json({ message: '课程不存在' })
   const { text, slideIndex, startMs, endMs, isFinal } = req.body
   if (!text) return res.status(400).json({ message: 'text 不能为空' })
   const segId = store.addTranscriptSegment({
@@ -165,9 +270,9 @@ app.post('/api/sessions/:id/transcript', (req, res) => {
   res.json({ data: { id: segId } })
 })
 
-app.post('/api/sessions/:id/end', async (req, res) => {
+app.post('/api/sessions/:id/end', requireAuth, async (req, res) => {
+  if (!ownedSession(req, res)) return
   const id = Number(req.params.id)
-  if (!store.getSession(id)) return res.status(404).json({ message: '课程不存在' })
   const beforeEnd = store.getActiveRound(id)
   const roundNumber = beforeEnd?.round_number ?? null
   const { session, endedRound } = store.endSession(id)
@@ -192,10 +297,10 @@ app.post('/api/sessions/:id/end', async (req, res) => {
   })
 })
 
-app.delete('/api/sessions/:id', (req, res) => {
+app.delete('/api/sessions/:id', requireAuth, (req, res) => {
+  const session = ownedSession(req, res)
+  if (!session) return
   const id = Number(req.params.id)
-  const session = store.getSession(id)
-  if (!session) return res.status(404).json({ message: '课程不存在' })
   if (session.ppt_path) {
     const filePath = path.join(ROOT, session.ppt_path.replace(/^\//, ''))
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
@@ -204,8 +309,9 @@ app.delete('/api/sessions/:id', (req, res) => {
   res.json({ ok: true })
 })
 
-app.delete('/api/sessions/:id/rounds/:roundNumber', (req, res) => {
+app.delete('/api/sessions/:id/rounds/:roundNumber', requireAuth, (req, res) => {
   try {
+    if (!ownedSession(req, res)) return
     const sessionId = Number(req.params.id)
     const roundNumber = Number(req.params.roundNumber)
     if (!Number.isInteger(roundNumber) || roundNumber <= 0) {
@@ -219,9 +325,9 @@ app.delete('/api/sessions/:id/rounds/:roundNumber', (req, res) => {
   }
 })
 
-app.post('/api/sessions/:id/analyze', async (req, res) => {
+app.post('/api/sessions/:id/analyze', requireAuth, async (req, res) => {
+  if (!ownedSession(req, res)) return
   const id = Number(req.params.id)
-  if (!store.getSession(id)) return res.status(404).json({ message: '课程不存在' })
   const roundNumber = req.query.round != null ? Number(req.query.round) : null
   try {
     const result = await runFullAnalysis(store, id, roundNumber)
@@ -231,7 +337,8 @@ app.post('/api/sessions/:id/analyze', async (req, res) => {
   }
 })
 
-app.get('/api/sessions/:id/report', (req, res) => {
+app.get('/api/sessions/:id/report', requireAuth, (req, res) => {
+  if (!ownedSession(req, res)) return
   const roundNumber = req.query.round != null ? Number(req.query.round) : null
   const report = store.getReport(Number(req.params.id), roundNumber)
   if (!report) return res.status(404).json({ message: '课程不存在' })
@@ -243,10 +350,10 @@ app.get('/api/sessions/:id/report', (req, res) => {
   })
 })
 
-app.post('/api/sessions/:id/continue', (req, res) => {
+app.post('/api/sessions/:id/continue', requireAuth, (req, res) => {
   try {
+    if (!ownedSession(req, res)) return
     const id = Number(req.params.id)
-    if (!store.getSession(id)) return res.status(404).json({ message: '课程不存在' })
     const session = store.continueSession(id)
     res.json({ data: mapSessionRow(session) })
   } catch (err) {
@@ -254,7 +361,8 @@ app.post('/api/sessions/:id/continue', (req, res) => {
   }
 })
 
-app.get('/api/sessions/:id/export', async (req, res) => {
+app.get('/api/sessions/:id/export', requireAuth, async (req, res) => {
+  if (!ownedSession(req, res)) return
   const id = Number(req.params.id)
   const roundNumber = req.query.round != null ? Number(req.query.round) : null
   const report = store.getReport(id, roundNumber)
@@ -262,7 +370,7 @@ app.get('/api/sessions/:id/export', async (req, res) => {
 
   const format = String(req.query.format || 'md').toLowerCase()
   const roundSuffix = report.currentRound ? `-第${report.currentRound.round_number}节` : ''
-  const safeTitle = report.session.title.replace(/[^\w\u4e00-\u9fff-]/g, '_')
+  const safeTitle = report.session.title.replace(/[^\w\u4e00-\u9fff-]+/g, '_')
 
   try {
     if (format === 'docx') {
@@ -340,8 +448,23 @@ server.on('upgrade', (request, socket, head) => {
   }
 
   const sessionId = Number(url.searchParams.get('sessionId'))
+  const token = url.searchParams.get('token')
   if (!Number.isInteger(sessionId) || sessionId <= 0) {
     socket.write('HTTP/1.1 400 Bad Request\r\n\r\n')
+    socket.destroy()
+    return
+  }
+
+  const auth = resolveAuthToken(token)
+  if (!auth) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
+    socket.destroy()
+    return
+  }
+
+  const owned = getSessionOwned(sessionId, auth.userId)
+  if (owned.error) {
+    socket.write('HTTP/1.1 403 Forbidden\r\n\r\n')
     socket.destroy()
     return
   }

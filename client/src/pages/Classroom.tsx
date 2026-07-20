@@ -60,7 +60,7 @@ export function ClassroomPage() {
 
   useEffect(() => {
     if (!Number.isInteger(sessionId) || sessionId <= 0) {
-      navigate('/')
+      navigate('/courses')
       return
     }
     setSessionLoading(true)
@@ -91,7 +91,7 @@ export function ClassroomPage() {
       })
       .catch((err) => {
         message.error(err instanceof Error ? err.message : '加载失败')
-        navigate('/')
+        navigate('/courses')
       })
       .finally(() => setSessionLoading(false))
   }, [sessionId, navigate, reviewRoundNumber])
@@ -191,7 +191,7 @@ export function ClassroomPage() {
       resetSubtitles()
       setAsrStreaming(false)
       setRecording(true)
-      message.info('已开始监听，说话后将自动连接转写')
+      message.info('已开始听课，请对着麦克风正常讲授')
     }
   }
 
@@ -199,8 +199,8 @@ export function ClassroomPage() {
     const roundNo = session?.current_round ?? 1
     Modal.confirm({
       title: `结束第 ${roundNo} 节课？`,
-      content: '本节结束后将自动生成分析报告；之后还可继续上下一节。',
-      okText: '结束本节',
+      content: '结束后将根据本节转写自动生成评课报告；之后仍可继续上下一节。',
+      okText: '结束并生成报告',
       cancelText: '取消',
       onOk: async () => {
         setEnding(true)
@@ -262,24 +262,20 @@ export function ClassroomPage() {
   }
 
   const liveStatusTag = () => {
-    if (!recording) return <Tag>未录音</Tag>
-    if (!asrStreaming) return <Tag color="default">待声</Tag>
+    if (!recording) return <Tag>未听课</Tag>
+    if (!asrStreaming) return <Tag color="default">等待说话</Tag>
     if (asrStatus === 'connected') {
       return (
         <Space size={4}>
-          <Tag color="green">转写中</Tag>
-          {aiPolish && (
-            <Tag color="purple" title="讯飞识别 + DeepSeek/Qwen 实时校对">
-              AI 校对
-            </Tag>
-          )}
+          <Tag color="green">听课中</Tag>
+          {aiPolish && <Tag color="blue">术语校对</Tag>}
         </Space>
       )
     }
     if (asrStatus === 'connecting') return <Tag color="processing">连接中</Tag>
-    if (asrStatus === 'error') return <Tag color="red">转写异常</Tag>
-    if (asrStatus === 'sleeping') return <Tag color="default">待声</Tag>
-    return <Tag color="blue">监听中</Tag>
+    if (asrStatus === 'error') return <Tag color="red">听课异常</Tag>
+    if (asrStatus === 'sleeping') return <Tag color="default">等待说话</Tag>
+    return <Tag color="blue">听课中</Tag>
   }
 
   const roundHasAnalysis = (roundNumber: number) =>
@@ -292,8 +288,8 @@ export function ClassroomPage() {
     <div className="classroom-page">
       <header className="classroom-toolbar">
         <Space>
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/')}>
-            返回
+          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/courses')}>
+            返回课程
           </Button>
           <Text strong>{session?.title || '加载中…'}</Text>
           {statusTag()}
@@ -334,19 +330,19 @@ export function ClassroomPage() {
                 icon={recording ? <AudioMutedOutlined /> : <AudioOutlined />}
                 onClick={toggleRecording}
               >
-                {recording ? '暂停转写' : '开始转写'}
+                {recording ? '暂停听课' : '开始听课'}
               </Button>
               <Button icon={<SettingOutlined />} onClick={() => setSettingsOpen(true)}>
-                字幕设置
+                字幕
               </Button>
               <Button danger icon={<StopOutlined />} loading={ending} onClick={handleEndClass}>
-                结束本节
+                结束并生成报告
               </Button>
             </>
           )}
           {isReview && (
             <Button icon={<SettingOutlined />} onClick={() => setSettingsOpen(true)}>
-              字幕设置
+              字幕
             </Button>
           )}
         </Space>
@@ -394,8 +390,8 @@ export function ClassroomPage() {
             isReview
               ? '该节暂无转写记录'
               : recording
-                ? '正在监听，说话后将显示字幕'
-                : '点击「开始转写」后字幕将在此滚动显示'
+                ? '正在听课，说话后字幕将显示在此'
+                : '点击「开始听课」后，字幕将在此滚动显示'
           }
         />
       </main>
@@ -415,8 +411,7 @@ export function ClassroomPage() {
 
       <footer className="classroom-footer">
         <Text type="secondary">
-          触屏：左滑/点右侧下一页 · 右滑/点左侧上一页 · 快捷键 ← → · F 全屏 · 当前第{' '}
-          {slideIndex + 1}/{slideCount || '?'} 页
+          第 {slideIndex + 1}/{slideCount || '?'} 页 · ← → 翻页 · F 全屏
           {isReview ? ' · 空格 播放/暂停' : ''}
         </Text>
       </footer>

@@ -1,5 +1,6 @@
 CREATE TABLE IF NOT EXISTS sessions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER,
   title TEXT NOT NULL,
   ppt_filename TEXT,
   ppt_path TEXT,
@@ -9,6 +10,22 @@ CREATE TABLE IF NOT EXISTS sessions (
   started_at TEXT NOT NULL DEFAULT (datetime('now')),
   ended_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username_hash TEXT NOT NULL UNIQUE,
+  username_cipher TEXT NOT NULL,
+  password_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS auth_tokens (
+  token TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS lesson_rounds (

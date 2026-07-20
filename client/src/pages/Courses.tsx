@@ -4,6 +4,7 @@ import {
   FilePptOutlined,
   PlayCircleOutlined,
   PlusOutlined,
+  RobotOutlined,
 } from '@ant-design/icons'
 import {
   Button,
@@ -21,15 +22,18 @@ import {
   message,
 } from 'antd'
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { createSession, continueSession, deleteRound, deleteSession, listSessions } from '../api'
+import { useAuth } from '../auth/AuthContext'
 import { loadSubtitleStyle } from '../types'
 import type { LessonRound, Session } from '../types'
 
-const { Title, Paragraph, Text } = Typography
+const { Title, Text } = Typography
 
-export function HomePage() {
+export function CoursesPage() {
   const navigate = useNavigate()
+  const { user, logout } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
@@ -53,6 +57,13 @@ export function HomePage() {
     fetchSessions()
   }, [])
 
+  useEffect(() => {
+    if (searchParams.get('new') === '1') {
+      setModalOpen(true)
+      setSearchParams({}, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
+
   const handleCreate = async () => {
     try {
       const values = await form.validateFields()
@@ -67,7 +78,7 @@ export function HomePage() {
       fd.append('pptOriginalName', pptFile.name)
       fd.append('subtitleStyle', JSON.stringify(loadSubtitleStyle()))
       const session = await createSession(fd)
-      message.success('课程已创建')
+      message.success('课程已创建，进入课堂')
       setModalOpen(false)
       form.resetFields()
       setPptFile(null)
@@ -172,23 +183,37 @@ export function HomePage() {
 
   return (
     <div className="page home-page">
-      <div className="page-header">
-        <div>
-          <Title level={2} style={{ margin: 0 }}>
-            智能课堂助手
+      <header className="home-header">
+        <div className="home-header-text">
+          <Title level={3} style={{ margin: 0 }}>
+            我的课程
           </Title>
-          <Paragraph type="secondary" style={{ margin: '8px 0 0' }}>
-            PPT 放映 · 实时字幕 · AI 课后分析
-          </Paragraph>
+          <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
+            {user?.username ? `${user.username} · ` : ''}
+            管理课件与课次 · 进入课堂听写 · 查看成长报告
+          </Text>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setModalOpen(true)}>
-          新建课程
-        </Button>
-      </div>
+        <Space wrap>
+          <Button
+            className="courses-agent-entry"
+            size="large"
+            icon={<RobotOutlined />}
+            onClick={() => navigate('/')}
+          >
+            智能体工作台
+          </Button>
+          <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setModalOpen(true)}>
+            新建课程
+          </Button>
+          <Button size="large" onClick={() => logout().then(() => navigate('/login'))}>
+            退出登录
+          </Button>
+        </Space>
+      </header>
 
-      <Card title="课程列表" loading={loading}>
+      <Card loading={loading}>
         {sessions.length === 0 ? (
-          <Empty description="暂无课程，点击「新建课程」开始" />
+          <Empty description="还没有课程，点击「新建课程」上传 PPT 开始" />
         ) : (
           <List
             dataSource={sessions}
@@ -217,7 +242,7 @@ export function HomePage() {
                             icon={<PlayCircleOutlined />}
                             onClick={() => navigate(`/classroom/${item.id}`)}
                           >
-                            继续上课
+                            进入课堂
                           </Button>
                         ) : (
                           <Button
@@ -271,7 +296,7 @@ export function HomePage() {
         onCancel={() => setModalOpen(false)}
         onOk={handleCreate}
         confirmLoading={creating}
-        okText="开始上课"
+        okText="进入课堂"
       >
         <Form form={form} layout="vertical">
           <Form.Item
@@ -279,9 +304,13 @@ export function HomePage() {
             label="课程标题"
             rules={[{ required: true, message: '请输入课程标题' }]}
           >
-            <Input placeholder="例如：高一数学 · 函数的概念" />
+            <Input placeholder="例如：门童迎送服务 · 护顶与七步程序" />
           </Form.Item>
-          <Form.Item label="上传课件（.pptx）" required>
+          <Form.Item
+            label="上课课件（.pptx）"
+            required
+            extra="此 PPT 仅用于课堂放映与翻页对齐，不等于智能体知识库。知识库请在工作台单独上传。"
+          >
             <Upload
               accept=".pptx"
               maxCount={1}
