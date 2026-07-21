@@ -1,8 +1,12 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { DEFAULT_AGENT_CONFIG, mergeAgentConfig } from './defaults.js'
 import { extractPptxSlideTexts } from '../utils/pptxText.js'
+
+const require = createRequire(import.meta.url)
+const pdfParse = require('pdf-parse')
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = path.resolve(__dirname, '../../data')
@@ -99,6 +103,16 @@ async function extractKnowledgeText(filePath, originalName) {
   const ext = path.extname(originalName || filePath).toLowerCase()
   if (ext === '.txt' || ext === '.md') {
     return fs.readFileSync(filePath, 'utf8').slice(0, 80000)
+  }
+  if (ext === '.pdf') {
+    const buf = fs.readFileSync(filePath)
+    const data = await pdfParse(buf)
+    return String(data.text || '')
+      .replace(/\r\n/g, '\n')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+      .slice(0, 80000)
   }
   if (ext === '.pptx') {
     const slides = await extractPptxSlideTexts(filePath)

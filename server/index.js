@@ -100,8 +100,8 @@ const knowledgeUpload = multer({
   limits: { fileSize: 30 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase()
-    if (['.txt', '.md', '.pptx'].includes(ext)) cb(null, true)
-    else cb(new Error('知识库仅支持 .txt / .md / .pptx'))
+    if (['.txt', '.md', '.pdf', '.pptx'].includes(ext)) cb(null, true)
+    else cb(new Error('知识库仅支持 .txt / .md / .pdf / .pptx'))
   },
 })
 

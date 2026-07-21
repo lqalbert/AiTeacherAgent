@@ -461,7 +461,7 @@ export function AgentPage() {
               </Paragraph>
               <Space wrap style={{ marginBottom: 16 }}>
                 <Upload
-                  accept=".txt,.md,.pptx"
+                  accept=".txt,.md,.pdf,.pptx"
                   showUploadList={false}
                   beforeUpload={handleUploadKnowledge}
                   disabled={uploading}
@@ -470,7 +470,7 @@ export function AgentPage() {
                     上传知识文档
                   </Button>
                 </Upload>
-                <Text type="secondary">支持 .txt / .md / .pptx</Text>
+                <Text type="secondary">支持 .txt / .md / .pdf / .pptx</Text>
               </Space>
 
               {docs.length === 0 ? (
