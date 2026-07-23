@@ -23,6 +23,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { analyzeSession, exportUrl, getReport } from '../api'
 import { MindMapView } from '../components/MindMapView'
 import type { AnalysisResult, Question, Report } from '../types'
+import { normalizeEvaluationPoints } from '../utils/evaluationPoints'
 import { joinTranscriptSegments } from '../utils/transcriptText'
 
 const { Title, Paragraph, Text } = Typography
@@ -216,6 +217,8 @@ export function ReportPage() {
 
 function AnalysisSection({ analysis }: { analysis: AnalysisResult }) {
   const ev = analysis.evaluation
+  const strengths = normalizeEvaluationPoints(ev?.strengths)
+  const improvements = normalizeEvaluationPoints(ev?.improvements)
   const dimLabels: Record<string, string> = {
     content: '教学内容',
     logic: '讲解逻辑',
@@ -229,7 +232,7 @@ function AnalysisSection({ analysis }: { analysis: AnalysisResult }) {
         <Card
           title="课堂评价"
           type="inner"
-          extra={<Text type="secondary" style={{ fontSize: 12 }}>基于本节转写</Text>}
+          extra={<Text type="secondary" style={{ fontSize: 12 }}>基于本节转写 · 附证据引用</Text>}
         >
           <Paragraph>{ev.summary}</Paragraph>
           <Tag color="blue">教学综合评分 {ev.score}/5</Tag>
@@ -244,27 +247,53 @@ function AnalysisSection({ analysis }: { analysis: AnalysisResult }) {
               </Space>
             </div>
           )}
-          {ev.strengths?.length > 0 && (
+          {strengths.length > 0 && (
             <>
               <Text strong style={{ display: 'block', marginTop: 16 }}>
                 教学亮点
               </Text>
               <List
                 size="small"
-                dataSource={ev.strengths}
-                renderItem={(item) => <List.Item>• {item}</List.Item>}
+                dataSource={strengths}
+                renderItem={(item) => (
+                  <List.Item className="eval-point-item">
+                    <div className="eval-point">
+                      <div className="eval-point-claim">• {item.claim}</div>
+                      {(item.page || item.quote) && (
+                        <div className="eval-point-evidence">
+                          <span className="eval-point-evidence-label">证据</span>
+                          {item.page ? <Tag className="eval-point-page">第 {item.page} 页</Tag> : null}
+                          {item.quote ? <span className="eval-point-quote">「{item.quote}」</span> : null}
+                        </div>
+                      )}
+                    </div>
+                  </List.Item>
+                )}
               />
             </>
           )}
-          {ev.improvements?.length > 0 && (
+          {improvements.length > 0 && (
             <>
               <Text strong style={{ display: 'block', marginTop: 8 }}>
                 改进建议
               </Text>
               <List
                 size="small"
-                dataSource={ev.improvements}
-                renderItem={(item) => <List.Item>• {item}</List.Item>}
+                dataSource={improvements}
+                renderItem={(item) => (
+                  <List.Item className="eval-point-item">
+                    <div className="eval-point">
+                      <div className="eval-point-claim">• {item.claim}</div>
+                      {(item.page || item.quote) && (
+                        <div className="eval-point-evidence">
+                          <span className="eval-point-evidence-label">证据</span>
+                          {item.page ? <Tag className="eval-point-page">第 {item.page} 页</Tag> : null}
+                          {item.quote ? <span className="eval-point-quote">「{item.quote}」</span> : null}
+                        </div>
+                      )}
+                    </div>
+                  </List.Item>
+                )}
               />
             </>
           )}

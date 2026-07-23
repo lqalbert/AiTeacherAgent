@@ -1,17 +1,19 @@
 import {
   BookOutlined,
+  DeleteOutlined,
+  DownloadOutlined,
+  EyeOutlined,
   FolderOpenOutlined,
   FormOutlined,
   PlusOutlined,
-  RocketOutlined,
   SaveOutlined,
   SettingOutlined,
-  ThunderboltOutlined,
 } from '@ant-design/icons'
 import {
   Button,
   Input,
   InputNumber,
+  Modal,
   Space,
   Switch,
   Typography,
@@ -23,37 +25,51 @@ import { useNavigate } from 'react-router-dom'
 import {
   deleteKnowledgeDoc,
   getAgentConfig,
+  getKnowledgeDocText,
+  knowledgeFileUrl,
   listKnowledgeDocs,
   saveAgentConfig,
   uploadKnowledgeDoc,
 } from '../api'
 import { useAuth } from '../auth/AuthContext'
+import { PptViewer } from '../components/PptViewer'
 import type { AgentConfig, KnowledgeDoc } from '../types/agentConfig'
 import { formatBeijingTime } from '../utils/time'
 
 const { Title, Paragraph, Text } = Typography
 const { TextArea } = Input
 
-type PanelKey = 'overview' | 'role' | 'evaluation' | 'report' | 'knowledge' | 'skills'
+type PanelKey = 'role' | 'evaluation' | 'report' | 'knowledge'
+
+type KbPreviewState =
+  | { kind: 'text'; docId: string; title: string; text: string; loading?: boolean }
+  | { kind: 'pdf'; docId: string; title: string; url: string }
+  | { kind: 'pptx'; docId: string; title: string; url: string }
+  | null
+
+function knowledgeExt(doc: KnowledgeDoc) {
+  const name = doc.filename || doc.storedName || ''
+  const i = name.lastIndexOf('.')
+  return i >= 0 ? name.slice(i).toLowerCase() : ''
+}
 
 const NAV: { key: PanelKey; label: string; icon: ReactNode }[] = [
-  { key: 'overview', label: '对话与任务', icon: <ThunderboltOutlined /> },
   { key: 'role', label: '角色设定', icon: <SettingOutlined /> },
   { key: 'evaluation', label: '评价标准', icon: <FormOutlined /> },
   { key: 'report', label: '报告与作业', icon: <FormOutlined /> },
   { key: 'knowledge', label: '知识库', icon: <BookOutlined /> },
-  { key: 'skills', label: '技能与工作流', icon: <RocketOutlined /> },
 ]
 
 export function AgentPage() {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
-  const [panel, setPanel] = useState<PanelKey>('overview')
+  const [panel, setPanel] = useState<PanelKey>('role')
   const [config, setConfig] = useState<AgentConfig | null>(null)
   const [docs, setDocs] = useState<KnowledgeDoc[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [kbPreview, setKbPreview] = useState<KbPreviewState>(null)
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -107,14 +123,66 @@ export function AgentPage() {
     return false
   }
 
-  const handleDeleteDoc = async (id: string) => {
-    try {
-      await deleteKnowledgeDoc(id)
-      setDocs((list) => list.filter((d) => d.id !== id))
-      message.success('已删除')
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : '删除失败')
+  const handleDeleteDoc = (doc: KnowledgeDoc) => {
+    Modal.confirm({
+      title: '确认删除该知识文档？',
+      content: `将删除「${doc.title}」，此操作不可恢复。`,
+      okText: '删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          await deleteKnowledgeDoc(doc.id)
+          setDocs((list) => list.filter((d) => d.id !== doc.id))
+          if (kbPreview?.docId === doc.id) setKbPreview(null)
+          message.success('已删除')
+        } catch (err) {
+          message.error(err instanceof Error ? err.message : '删除失败')
+          throw err
+        }
+      },
+    })
+  }
+
+  const handleDownloadDoc = (doc: KnowledgeDoc) => {
+    window.open(knowledgeFileUrl(doc.id, true), '_blank', 'noopener,noreferrer')
+  }
+
+  const handlePreviewDoc = async (doc: KnowledgeDoc) => {
+    const ext = knowledgeExt(doc)
+    if (ext === '.pdf') {
+      setKbPreview({ kind: 'pdf', docId: doc.id, title: doc.title, url: knowledgeFileUrl(doc.id) })
+      return
     }
+    if (ext === '.pptx') {
+      setKbPreview({ kind: 'pptx', docId: doc.id, title: doc.title, url: knowledgeFileUrl(doc.id) })
+      return
+    }
+    // txt / md / 其他：展示抽取文本；无文本时仍可下载原文件
+    setKbPreview({ kind: 'text', docId: doc.id, title: doc.title, text: '', loading: true })
+    try {
+      const data = await getKnowledgeDocText(doc.id)
+      setKbPreview({
+        kind: 'text',
+        docId: doc.id,
+        title: data.title || doc.title,
+        text: data.text?.trim()
+          ? data.text
+          : '（未能提取可预览文本，请下载原文件查看）',
+      })
+    } catch (err) {
+      setKbPreview(null)
+      message.error(err instanceof Error ? err.message : '预览失败')
+    }
+  }
+
+  const handleOpenDoc = (doc: KnowledgeDoc) => {
+    const ext = knowledgeExt(doc)
+    if (ext === '.pdf') {
+      window.open(knowledgeFileUrl(doc.id), '_blank', 'noopener,noreferrer')
+      return
+    }
+    void handlePreviewDoc(doc)
   }
 
   if (loading || !config) {
@@ -181,79 +249,6 @@ export function AgentPage() {
         </aside>
 
         <main className="agent-console-main">
-          {panel === 'overview' && (
-            <section className="agent-panel">
-              <div className="agent-chat-window">
-                <div className="agent-chat-bubble is-agent">
-                  <div className="agent-chat-name">{config.role.name}</div>
-                  <p>{config.role.opening || '请先在「角色设定」中填写开场白。'}</p>
-                </div>
-                <div className="agent-chat-bubble is-system">
-                  <p>
-                    知识库文档 {docs.length} 份 · 报告项目{' '}
-                    {sectionEntries.filter(([, s]) => s.enabled).map(([, s]) => s.label).join('、') ||
-                      '未启用'}{' '}
-                    · 作业题量{' '}
-                    {config.homework.types
-                      .filter((t) => t.enabled)
-                      .reduce((n, t) => n + Number(t.count || 0), 0)}{' '}
-                    道
-                  </p>
-                </div>
-              </div>
-
-              <Paragraph type="secondary" style={{ marginBottom: 12 }}>
-                请先配置角色、评价标准、报告项目与知识库，再进入「我的课程」上课。上课 PPT
-                仅用于放映，<strong>不等于</strong>知识库。
-              </Paragraph>
-
-              <div className="agent-quick-grid">
-                <button type="button" className="agent-quick-card" onClick={() => setPanel('role')}>
-                  <SettingOutlined />
-                  <strong>编辑角色</strong>
-                  <span>自主输入名称、人设与边界</span>
-                </button>
-                <button
-                  type="button"
-                  className="agent-quick-card"
-                  onClick={() => setPanel('evaluation')}
-                >
-                  <FormOutlined />
-                  <strong>评价标准</strong>
-                  <span>自定义课堂评价维度与要求</span>
-                </button>
-                <button type="button" className="agent-quick-card" onClick={() => setPanel('report')}>
-                  <FormOutlined />
-                  <strong>报告与作业</strong>
-                  <span>勾选报告项，设置题型题量</span>
-                </button>
-                <button
-                  type="button"
-                  className="agent-quick-card"
-                  onClick={() => setPanel('knowledge')}
-                >
-                  <BookOutlined />
-                  <strong>知识库</strong>
-                  <span>上传补充资料（非上课 PPT）</span>
-                </button>
-                <button type="button" className="agent-quick-card" onClick={() => setPanel('skills')}>
-                  <RocketOutlined />
-                  <strong>技能与工作流</strong>
-                  <span>启停技能节点与流程步骤</span>
-                </button>
-                <button
-                  type="button"
-                  className="agent-quick-card"
-                  onClick={() => navigate('/courses')}
-                >
-                  <FolderOpenOutlined />
-                  <strong>我的课程</strong>
-                  <span>上传上课 PPT，开始听课</span>
-                </button>
-              </div>
-            </section>
-          )}
-
           {panel === 'role' && (
             <section className="agent-panel agent-form-panel">
               <Text strong>角色设定（自主输入）</Text>
@@ -487,121 +482,103 @@ export function AgentPage() {
               ) : (
                 docs.map((doc) => (
                   <div key={doc.id} className="agent-kb-row">
-                    <div>
-                      <Text strong>{doc.title}</Text>
+                    <div className="agent-kb-info">
+                      <button
+                        type="button"
+                        className="agent-kb-title-btn"
+                        onClick={() => handleOpenDoc(doc)}
+                        title="打开 / 预览"
+                      >
+                        <Text strong>{doc.title}</Text>
+                      </button>
                       <div className="agent-kb-meta">
                         {doc.filename} · {doc.charCount} 字
                         {doc.hasText ? '' : ' · 未能提取文本'} ·{' '}
                         {formatBeijingTime(doc.createdAt)}
                       </div>
                     </div>
-                    <Button size="small" danger onClick={() => handleDeleteDoc(doc.id)}>
-                      删除
-                    </Button>
+                    <Space size={4} wrap className="agent-kb-actions">
+                      <Button
+                        size="small"
+                        icon={<EyeOutlined />}
+                        onClick={() => void handlePreviewDoc(doc)}
+                      >
+                        预览
+                      </Button>
+                      <Button
+                        size="small"
+                        icon={<DownloadOutlined />}
+                        onClick={() => handleDownloadDoc(doc)}
+                      >
+                        下载
+                      </Button>
+                      <Button
+                        size="small"
+                        danger
+                        icon={<DeleteOutlined />}
+                        onClick={() => handleDeleteDoc(doc)}
+                      >
+                        删除
+                      </Button>
+                    </Space>
                   </div>
                 ))
               )}
-            </section>
-          )}
 
-          {panel === 'skills' && (
-            <section className="agent-panel agent-form-panel">
-              <Text strong>技能配置</Text>
-              <Paragraph type="secondary">关闭技能后，对应生成步骤将跳过。</Paragraph>
-              {config.skills.map((skill, idx) => (
-                <div key={skill.key} className="agent-skill-edit">
-                  <div className="agent-inline-row">
-                    <Switch
-                      checked={skill.enabled}
-                      onChange={(checked) =>
-                        patchConfig((c) => {
-                          const skills = [...c.skills]
-                          skills[idx] = { ...skills[idx], enabled: checked }
-                          return { ...c, skills }
-                        })
-                      }
-                    />
-                    <Input
-                      value={skill.label}
-                      onChange={(e) =>
-                        patchConfig((c) => {
-                          const skills = [...c.skills]
-                          skills[idx] = { ...skills[idx], label: e.target.value }
-                          return { ...c, skills }
-                        })
-                      }
-                      style={{ maxWidth: 160 }}
-                    />
+              <Modal
+                open={kbPreview != null}
+                title={kbPreview?.title || '预览'}
+                onCancel={() => setKbPreview(null)}
+                footer={
+                  kbPreview ? (
+                    <Space>
+                      <Button
+                        icon={<DownloadOutlined />}
+                        onClick={() =>
+                          window.open(
+                            knowledgeFileUrl(kbPreview.docId, true),
+                            '_blank',
+                            'noopener,noreferrer',
+                          )
+                        }
+                      >
+                        下载原文件
+                      </Button>
+                      <Button type="primary" onClick={() => setKbPreview(null)}>
+                        关闭
+                      </Button>
+                    </Space>
+                  ) : null
+                }
+                width={kbPreview?.kind === 'pptx' || kbPreview?.kind === 'pdf' ? '90vw' : 720}
+                destroyOnClose
+                className="agent-kb-preview-modal"
+                styles={{
+                  body: {
+                    maxHeight: kbPreview?.kind === 'text' ? '60vh' : '75vh',
+                    overflow: 'auto',
+                    paddingTop: 12,
+                  },
+                }}
+              >
+                {kbPreview?.kind === 'text' && (
+                  <pre className="agent-kb-preview-text">
+                    {kbPreview.loading ? '加载中…' : kbPreview.text}
+                  </pre>
+                )}
+                {kbPreview?.kind === 'pdf' && (
+                  <iframe
+                    title={kbPreview.title}
+                    src={kbPreview.url}
+                    className="agent-kb-preview-frame"
+                  />
+                )}
+                {kbPreview?.kind === 'pptx' && (
+                  <div className="agent-kb-preview-ppt">
+                    <PptViewer src={kbPreview.url} />
                   </div>
-                  <Input
-                    value={skill.detail}
-                    placeholder="技能说明"
-                    onChange={(e) =>
-                      patchConfig((c) => {
-                        const skills = [...c.skills]
-                        skills[idx] = { ...skills[idx], detail: e.target.value }
-                        return { ...c, skills }
-                      })
-                    }
-                    style={{ marginBottom: 6 }}
-                  />
-                  <Input
-                    value={skill.tool}
-                    placeholder="对应工具"
-                    onChange={(e) =>
-                      patchConfig((c) => {
-                        const skills = [...c.skills]
-                        skills[idx] = { ...skills[idx], tool: e.target.value }
-                        return { ...c, skills }
-                      })
-                    }
-                  />
-                </div>
-              ))}
-
-              <Text strong style={{ display: 'block', margin: '20px 0 8px' }}>
-                工作流步骤
-              </Text>
-              {config.workflow.map((step, idx) => (
-                <div key={step.key} className="agent-inline-row" style={{ alignItems: 'flex-start' }}>
-                  <Switch
-                    checked={step.enabled}
-                    onChange={(checked) =>
-                      patchConfig((c) => {
-                        const workflow = [...c.workflow]
-                        workflow[idx] = { ...workflow[idx], enabled: checked }
-                        return { ...c, workflow }
-                      })
-                    }
-                  />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <Input
-                      value={step.title}
-                      onChange={(e) =>
-                        patchConfig((c) => {
-                          const workflow = [...c.workflow]
-                          workflow[idx] = { ...workflow[idx], title: e.target.value }
-                          return { ...c, workflow }
-                        })
-                      }
-                      style={{ marginBottom: 6 }}
-                    />
-                    <Input
-                      value={step.desc}
-                      onChange={(e) =>
-                        patchConfig((c) => {
-                          const workflow = [...c.workflow]
-                          workflow[idx] = { ...workflow[idx], desc: e.target.value }
-                          return { ...c, workflow }
-                        })
-                      }
-                    />
-                  </div>
-                </div>
-              ))}
-              <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={handleSave}>
-                保存技能与工作流
-              </Button>
+                )}
+              </Modal>
             </section>
           )}
         </main>

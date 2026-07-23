@@ -16,7 +16,9 @@ import {
   addKnowledgeDoc,
   deleteKnowledgeDoc,
   getAgentConfig,
+  getKnowledgeDocText,
   listKnowledgeDocs,
+  resolveKnowledgeFilePath,
   saveAgentConfig,
 } from './agent/configStore.js'
 import {
@@ -167,6 +169,43 @@ app.delete('/api/agent/knowledge/:id', requireAuth, (req, res) => {
   const ok = deleteKnowledgeDoc(req.auth.userId, String(req.params.id))
   if (!ok) return res.status(404).json({ message: '文档不存在' })
   res.json({ ok: true })
+})
+
+function knowledgeMime(ext) {
+  switch (String(ext || '').toLowerCase()) {
+    case '.pdf':
+      return 'application/pdf'
+    case '.pptx':
+      return 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    case '.md':
+      return 'text/markdown; charset=utf-8'
+    case '.txt':
+      return 'text/plain; charset=utf-8'
+    default:
+      return 'application/octet-stream'
+  }
+}
+
+/** 打开/预览原文件（inline）或下载（download=1）；支持 Header 或 ?token= */
+app.get('/api/agent/knowledge/:id/file', requireAuth, (req, res) => {
+  const resolved = resolveKnowledgeFilePath(req.auth.userId, String(req.params.id))
+  if (!resolved) return res.status(404).json({ message: '文档不存在' })
+  const { doc, filePath } = resolved
+  const download = req.query.download === '1' || req.query.download === 'true'
+  const filename = doc.filename || doc.storedName
+  res.setHeader('Content-Type', knowledgeMime(path.extname(doc.storedName || filename)))
+  res.setHeader(
+    'Content-Disposition',
+    `${download ? 'attachment' : 'inline'}; filename*=UTF-8''${encodeURIComponent(filename)}`,
+  )
+  return res.sendFile(filePath)
+})
+
+/** 预览抽取文本（txt/md/pdf/pptx 上传时已抽取） */
+app.get('/api/agent/knowledge/:id/text', requireAuth, (req, res) => {
+  const data = getKnowledgeDocText(req.auth.userId, String(req.params.id))
+  if (!data) return res.status(404).json({ message: '文档不存在' })
+  res.json({ data })
 })
 
 app.get('/api/health/asr', async (_req, res) => {

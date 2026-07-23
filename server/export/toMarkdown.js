@@ -1,6 +1,7 @@
 import { joinTranscriptSegments } from '../utils/transcriptText.js'
 import { mindMapToMarkdownLines } from '../utils/mindMap.js'
 import { formatBeijingTime } from '../utils/time.js'
+import { formatEvaluationPoint } from '../ai/evaluationPoints.js'
 
 export function buildMarkdownReport(report) {
   const { session, analysis, questions, transcript, currentRound } = report
@@ -79,13 +80,13 @@ export function buildMarkdownReport(report) {
       if (ev.strengths?.length) {
         lines.push('### 教学亮点')
         lines.push('')
-        for (const s of ev.strengths) lines.push(`- ${s}`)
+        for (const s of ev.strengths) lines.push(`- ${formatEvaluationPoint(s)}`)
         lines.push('')
       }
       if (ev.improvements?.length) {
         lines.push('### 改进建议')
         lines.push('')
-        for (const s of ev.improvements) lines.push(`- ${s}`)
+        for (const s of ev.improvements) lines.push(`- ${formatEvaluationPoint(s)}`)
         lines.push('')
       }
     }

@@ -175,6 +175,30 @@ export async function deleteKnowledgeDoc(id: string) {
   await request(`/api/agent/knowledge/${id}`, { method: 'DELETE' })
 }
 
+/** 知识库原文件 URL（预览用 inline；download=true 强制下载）。带 token 供新窗口/iframe 鉴权。 */
+export function knowledgeFileUrl(id: string, download = false) {
+  const params = new URLSearchParams()
+  const token = getStoredToken()
+  if (token) params.set('token', token)
+  if (download) params.set('download', '1')
+  const qs = params.toString()
+  return `/api/agent/knowledge/${encodeURIComponent(id)}/file${qs ? `?${qs}` : ''}`
+}
+
+export async function getKnowledgeDocText(id: string) {
+  const res = await request<{
+    data: {
+      id: string
+      title: string
+      filename: string
+      charCount: number
+      hasText: boolean
+      text: string
+    }
+  }>(`/api/agent/knowledge/${encodeURIComponent(id)}/text`)
+  return res.data
+}
+
 export function wsAsrUrl(sessionId: number) {
   const serverPort = import.meta.env.VITE_SERVER_PORT || '3200'
   const token = getStoredToken() || ''

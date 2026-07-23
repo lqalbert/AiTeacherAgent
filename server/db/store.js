@@ -2,6 +2,7 @@ import Database from 'better-sqlite3'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { normalizeEvaluationPoints } from '../ai/evaluationPoints.js'
 import { joinTranscriptSegments, joinTranscriptText } from '../utils/transcriptText.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -559,6 +560,13 @@ export function getAnalysis(sessionId, roundId) {
       evaluation = JSON.parse(row.lesson_evaluation)
     } catch {
       evaluation = null
+    }
+  }
+  if (evaluation && typeof evaluation === 'object') {
+    evaluation = {
+      ...evaluation,
+      strengths: normalizeEvaluationPoints(evaluation.strengths),
+      improvements: normalizeEvaluationPoints(evaluation.improvements),
     }
   }
   return {

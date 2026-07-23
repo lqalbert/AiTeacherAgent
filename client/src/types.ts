@@ -85,11 +85,20 @@ export type MindMapNode = {
   children?: MindMapNode[]
 }
 
+export type EvaluationPoint = {
+  claim: string
+  /** 证据页码（1 起），可空 */
+  page?: number | null
+  /** 转写或课件原文摘录，可空 */
+  quote?: string | null
+}
+
 export type LessonEvaluation = {
   summary: string
   score: number
-  strengths: string[]
-  improvements: string[]
+  /** 兼容旧数据 string，以及新结构 EvaluationPoint */
+  strengths: Array<string | EvaluationPoint>
+  improvements: Array<string | EvaluationPoint>
   dimensions?: {
     content: number
     logic: number

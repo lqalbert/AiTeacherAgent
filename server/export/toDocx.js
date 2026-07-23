@@ -9,6 +9,7 @@ import {
 import { joinTranscriptSegments } from '../utils/transcriptText.js'
 import { mindMapToBulletItems } from '../utils/mindMap.js'
 import { formatBeijingTime } from '../utils/time.js'
+import { formatEvaluationPoint } from '../ai/evaluationPoints.js'
 
 function heading(text, level = HeadingLevel.HEADING_1) {
   return new Paragraph({ text, heading: level, spacing: { after: 200 } })
@@ -75,11 +76,11 @@ export async function buildDocxBuffer(report) {
       }
       if (ev.strengths?.length) {
         children.push(heading('教学亮点', HeadingLevel.HEADING_3))
-        for (const s of ev.strengths) children.push(bullet(s))
+        for (const s of ev.strengths) children.push(bullet(formatEvaluationPoint(s)))
       }
       if (ev.improvements?.length) {
         children.push(heading('改进建议', HeadingLevel.HEADING_3))
-        for (const s of ev.improvements) children.push(bullet(s))
+        for (const s of ev.improvements) children.push(bullet(formatEvaluationPoint(s)))
       }
     }
   }

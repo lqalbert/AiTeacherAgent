@@ -99,6 +99,37 @@ export function listKnowledgeDocs(userId) {
   return readKbMeta(userId).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
 }
 
+export function getKnowledgeDoc(userId, id) {
+  return readKbMeta(userId).find((d) => d.id === id) || null
+}
+
+/** 返回原文件绝对路径；校验归属并防止路径穿越 */
+export function resolveKnowledgeFilePath(userId, id) {
+  const doc = getKnowledgeDoc(userId, id)
+  if (!doc?.storedName) return null
+  const p = ensureUserDirs(userId)
+  const filePath = path.resolve(p.kbFilesDir, path.basename(doc.storedName))
+  if (!filePath.startsWith(path.resolve(p.kbFilesDir) + path.sep)) return null
+  if (!fs.existsSync(filePath)) return null
+  return { doc, filePath }
+}
+
+export function getKnowledgeDocText(userId, id) {
+  const doc = getKnowledgeDoc(userId, id)
+  if (!doc) return null
+  const p = ensureUserDirs(userId)
+  const textPath = path.join(p.kbFilesDir, `${id}.txt`)
+  const text = fs.existsSync(textPath) ? fs.readFileSync(textPath, 'utf8') : ''
+  return {
+    id: doc.id,
+    title: doc.title,
+    filename: doc.filename,
+    charCount: doc.charCount,
+    hasText: doc.hasText,
+    text,
+  }
+}
+
 async function extractKnowledgeText(filePath, originalName) {
   const ext = path.extname(originalName || filePath).toLowerCase()
   if (ext === '.txt' || ext === '.md') {
