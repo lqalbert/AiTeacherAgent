@@ -1,11 +1,16 @@
-import { stripSubtitlePunctuation } from './subtitleText.js'
+import {
+  cleanSubtitleDisplay,
+  isProgressiveUtterance,
+  pickProgressiveText,
+  stripSubtitlePunctuation,
+} from './subtitleText.js'
 import { extractSpeakerTexts } from './speakerText.js'
 
 /**
  * 讯飞大模型实时字幕推送：
- * - 中间结果 stable=false 立即上屏（可改写）
- * - 最终结果 stable=true 落库并巩固字幕
- * - 分片切换时先落地上一段，避免丢句
+ * - 中间结果仅 interim 上屏（可改写）
+ * - 真正 final / 分片切换 / flush 才落库
+ * - 同一句递进结果修订上一段，避免重复
  */
 export function createRtasrLlmLiveEmitter({ sendLive, onStoreText, roleSeparation = false }) {
   /** @type {Record<number, { id: number, text: string }>} */
@@ -14,30 +19,26 @@ export function createRtasrLlmLiveEmitter({ sendLive, onStoreText, roleSeparatio
   const lastStoredBySpeaker = {}
   /** @type {Record<number, string>} */
   const lastLiveBySpeaker = {}
+  /** @type {Record<number, string>} */
+  const lastStoredRawBySpeaker = {}
   let currentSpeaker = 1
-  let pauseTimer = null
-
-  const PAUSE_EMIT_MS = 900
 
   function reset() {
-    if (pauseTimer) {
-      clearTimeout(pauseTimer)
-      pauseTimer = null
-    }
     for (const key of Object.keys(activeSegBySpeaker)) delete activeSegBySpeaker[key]
     for (const key of Object.keys(lastStoredBySpeaker)) delete lastStoredBySpeaker[key]
     for (const key of Object.keys(lastLiveBySpeaker)) delete lastLiveBySpeaker[key]
+    for (const key of Object.keys(lastStoredRawBySpeaker)) delete lastStoredRawBySpeaker[key]
     currentSpeaker = 1
   }
 
   function emitLive(speaker, text, stable) {
     const raw = String(text || '').trim()
     if (!raw) return
-    const display = stripSubtitlePunctuation(raw)
+    const display = cleanSubtitleDisplay(raw)
     if (!display) return
 
     const key = speaker > 0 ? speaker : 0
-    // 最终结果允许与中间结果相同；中间结果相同则跳过
+    // 中间结果相同可跳过；最终结果即使文案相同也要通知客户端（用于触发上屏）
     if (!stable && lastLiveBySpeaker[key] === display) return
     lastLiveBySpeaker[key] = display
 
@@ -48,20 +49,37 @@ export function createRtasrLlmLiveEmitter({ sendLive, onStoreText, roleSeparatio
   function emitStable(speaker, text) {
     const raw = String(text || '').trim()
     if (!raw) return
-    const display = stripSubtitlePunctuation(raw)
+    const display = cleanSubtitleDisplay(raw)
     if (!display) return
 
     const key = speaker > 0 ? speaker : 0
-    if (lastStoredBySpeaker[key] === display) {
-      // 仍推一次最终态，确保 UI 从 interim 固化
+    const spk = speaker > 0 ? speaker : undefined
+    const prevDisplay = lastStoredBySpeaker[key] || ''
+
+    if (prevDisplay && isProgressiveUtterance(prevDisplay, display)) {
+      const mergedDisplay = pickProgressiveText(prevDisplay, display)
+      const useNew =
+        mergedDisplay === display ||
+        stripSubtitlePunctuation(display).length >= stripSubtitlePunctuation(prevDisplay).length
+      const mergedRaw = useNew ? raw : lastStoredRawBySpeaker[key] || raw
+      lastStoredBySpeaker[key] = mergedDisplay
+      lastStoredRawBySpeaker[key] = mergedRaw
+      emitLive(speaker, mergedRaw, true)
+      if (mergedDisplay !== prevDisplay) {
+        onStoreText(spk ? `[说话人${spk}] ${mergedRaw}` : mergedRaw, { revise: true })
+      }
+      return
+    }
+
+    if (prevDisplay && display === prevDisplay) {
       emitLive(speaker, raw, true)
       return
     }
-    lastStoredBySpeaker[key] = display
 
+    lastStoredBySpeaker[key] = display
+    lastStoredRawBySpeaker[key] = raw
     emitLive(speaker, raw, true)
-    const spk = speaker > 0 ? speaker : undefined
-    onStoreText(spk ? `[说话人${spk}] ${raw}` : raw)
+    onStoreText(spk ? `[说话人${spk}] ${raw}` : raw, { revise: false })
   }
 
   function adoptSpeakerSeg(speaker, segId, text) {
@@ -69,8 +87,14 @@ export function createRtasrLlmLiveEmitter({ sendLive, onStoreText, roleSeparatio
     if (!piece) return
 
     const prev = activeSegBySpeaker[speaker]
-    // 分片切换：先落盘上一段，避免丢句
     if (prev && segId !== prev.id && prev.text.trim()) {
+      // 新分片仍是同一句递进：合并，不要半句先落库
+      if (isProgressiveUtterance(prev.text, piece)) {
+        const useNew =
+          cleanSubtitleDisplay(piece).length >= cleanSubtitleDisplay(prev.text).length
+        activeSegBySpeaker[speaker] = { id: segId, text: useNew ? piece : prev.text }
+        return
+      }
       emitStable(speaker, prev.text)
     }
 
@@ -99,23 +123,9 @@ export function createRtasrLlmLiveEmitter({ sendLive, onStoreText, roleSeparatio
     return segments.length ? segments : [{ speaker: 0, text: parsed.text }]
   }
 
-  function schedulePauseEmit() {
-    if (pauseTimer) clearTimeout(pauseTimer)
-    pauseTimer = setTimeout(() => {
-      pauseTimer = null
-      for (const [speaker, seg] of Object.entries(activeSegBySpeaker)) {
-        if (seg.text.trim()) emitStable(Number(speaker), seg.text)
-      }
-    }, PAUSE_EMIT_MS)
-  }
-
   return {
     reset,
     flush: () => {
-      if (pauseTimer) {
-        clearTimeout(pauseTimer)
-        pauseTimer = null
-      }
       for (const [speaker, seg] of Object.entries(activeSegBySpeaker)) {
         if (seg.text.trim()) emitStable(Number(speaker), seg.text)
       }
@@ -137,20 +147,14 @@ export function createRtasrLlmLiveEmitter({ sendLive, onStoreText, roleSeparatio
 
         if (isFinal) {
           emitStable(spk, current)
+          // final 后清掉 active，后续新句用新行
+          delete activeSegBySpeaker[spk]
         } else {
-          // 中间结果立即上屏，减少「漏听感」
           emitLive(spk, current, false)
-          schedulePauseEmit()
         }
       }
 
-      if (isFinal && pauseTimer) {
-        clearTimeout(pauseTimer)
-        pauseTimer = null
-      }
-
       if (ls) {
-        // 会话尾帧：落盘残留后重置
         for (const [speaker, seg] of Object.entries(activeSegBySpeaker)) {
           if (seg.text.trim()) emitStable(Number(speaker), seg.text)
         }

@@ -27,6 +27,7 @@ import { createSession, continueSession, deleteRound, deleteSession, listSession
 import { useAuth } from '../auth/AuthContext'
 import { loadSubtitleStyle } from '../types'
 import type { LessonRound, Session } from '../types'
+import { formatBeijingTime } from '../utils/time'
 
 const { Title, Text } = Typography
 
@@ -131,8 +132,8 @@ export function CoursesPage() {
           <Tag color={isActive ? 'green' : 'default'}>{isActive ? '进行中' : '已结束'}</Tag>
           {round.has_analysis && <Tag color="blue">已有报告</Tag>}
           <Text type="secondary">
-            {round.started_at}
-            {round.ended_at ? ` → ${round.ended_at}` : ''}
+            {formatBeijingTime(round.started_at)}
+            {round.ended_at ? ` → ${formatBeijingTime(round.ended_at)}` : ''}
           </Text>
           <Text type="secondary">{round.segment_count ?? 0} 条转写</Text>
         </Space>
@@ -185,10 +186,10 @@ export function CoursesPage() {
     <div className="page home-page">
       <header className="home-header">
         <div className="home-header-text">
-          <Title level={3} style={{ margin: 0 }}>
+          <Title level={3} className="app-page-title">
             我的课程
           </Title>
-          <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
+          <Text type="secondary" className="app-page-subtitle">
             {user?.username ? `${user.username} · ` : ''}
             管理课件与课次 · 进入课堂听写 · 查看成长报告
           </Text>
@@ -272,7 +273,7 @@ export function CoursesPage() {
                       <div className="session-rounds">
                         <Space split="·" style={{ marginBottom: rounds.length ? 8 : 0 }}>
                           <span>{item.ppt_filename || '无课件'}</span>
-                          <span>{item.started_at}</span>
+                          <span>{formatBeijingTime(item.started_at)}</span>
                           <span>{item.segment_count ?? 0} 条转写</span>
                         </Space>
                         {rounds.length > 0 && (

@@ -1,4 +1,5 @@
 import { ColorPicker, Form, Select, Slider } from 'antd'
+import type { Color } from 'antd/es/color-picker'
 import type { SubtitleStyle } from '../types'
 import { DEFAULT_SUBTITLE_STYLE } from '../types'
 
@@ -14,6 +15,17 @@ const FONT_OPTIONS = [
 type Props = {
   value: SubtitleStyle
   onChange: (style: SubtitleStyle) => void
+}
+
+function toHex(color: Color | string): string {
+  if (typeof color === 'string') {
+    return color.startsWith('#') ? color : `#${color}`
+  }
+  try {
+    return color.toHexString()
+  } catch {
+    return '#ffffff'
+  }
 }
 
 export function SubtitleSettings({ value, onChange }: Props) {
@@ -36,25 +48,28 @@ export function SubtitleSettings({ value, onChange }: Props) {
           onChange={(fontSize) => update({ fontSize })}
         />
       </Form.Item>
-      <Form.Item label="文字颜色">
+      <Form.Item label="文字颜色" extra="侧栏与全屏字幕均使用此颜色">
         <ColorPicker
           value={value.color}
-          onChange={(_, hex) => update({ color: hex })}
+          onChange={(color) => update({ color: toHex(color) })}
           showText
+          disabledAlpha
         />
       </Form.Item>
       <Form.Item label="实时字幕区背景" extra="课堂页右侧字幕区域背景色">
         <ColorPicker
           value={value.panelBackgroundColor || '#ffffff'}
-          onChange={(_, hex) => update({ panelBackgroundColor: hex })}
+          onChange={(color) => update({ panelBackgroundColor: toHex(color) })}
           showText
+          disabledAlpha
         />
       </Form.Item>
       <Form.Item label="文字底衬颜色" extra="字幕文字背后的衬底（全屏与侧栏均生效）">
         <ColorPicker
           value={value.backgroundColor}
-          onChange={(_, hex) => update({ backgroundColor: hex })}
+          onChange={(color) => update({ backgroundColor: toHex(color) })}
           showText
+          disabledAlpha
         />
       </Form.Item>
       <Form.Item label={`文字底衬透明度：${Math.round(value.backgroundOpacity * 100)}%`}>

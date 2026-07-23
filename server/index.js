@@ -30,6 +30,7 @@ import {
 import { hashUsername } from './auth/crypto.js'
 import * as store from './db/store.js'
 import { decodeUploadFilename, safeDiskFilename } from './utils/filename.js'
+import { extractPptxSlideTexts, resolvePptxFilePath } from './utils/pptxText.js'
 import { buildDocxBuffer } from './export/toDocx.js'
 import { buildMarkdownReport } from './export/toMarkdown.js'
 
@@ -502,7 +503,31 @@ wss.on('connection', (clientWs, { sessionId }) => {
   let currentSlide = slideState.get(sessionId) ?? 0
   const roundStartMs = activeRound.started_at_ms || Date.now()
   const roundId = activeRound.id
+  /** @type {{ id: number|bigint, text: string }[]} */
   const recentPolished = []
+  /** @type {string[]} */
+  let pptSlides = []
+
+  const pptPath = resolvePptxFilePath(sessionRow, ROOT)
+  if (pptPath) {
+    extractPptxSlideTexts(pptPath)
+      .then((slides) => {
+        pptSlides = slides || []
+      })
+      .catch((err) => console.warn('[asr] 课件文本预加载失败:', err.message))
+  }
+
+  const buildNearbySlides = (idx) => {
+    if (!pptSlides.length) return ''
+    return [idx - 1, idx, idx + 1]
+      .filter((i) => i >= 0 && i < pptSlides.length && pptSlides[i])
+      .map((i) => {
+        const t = String(pptSlides[i]).replace(/\s+/g, ' ').trim()
+        const clipped = t.length > 280 ? `${t.slice(0, 280)}…` : t
+        return `第${i + 1}页：${clipped}`
+      })
+      .join('\n')
+  }
 
   const bridge = createAsrBridge({
     provider: ASR_PROVIDER,
@@ -514,15 +539,22 @@ wss.on('connection', (clientWs, { sessionId }) => {
     getContext: () => ({
       sessionTitle: sessionRow.title,
       slideIndex: currentSlide,
-      recentTranscript: recentPolished.slice(-6).join(''),
+      slideText: pptSlides[currentSlide] || '',
+      nearbySlides: buildNearbySlides(currentSlide),
+      recentTranscript: recentPolished.slice(-6).map((r) => r.text).join(''),
     }),
-    onFinalText: (text) => {
+    onFinalText: (text, { revise = false } = {}) => {
       const plain = text.replace(/^\[说话人\d+\]\s*/, '')
-      recentPolished.push(plain)
-      if (recentPolished.length > 12) recentPolished.splice(0, recentPolished.length - 12)
-
       const nowMs = Date.now() - roundStartMs
-      store.addTranscriptSegment({
+
+      if (revise && recentPolished.length > 0) {
+        const last = recentPolished[recentPolished.length - 1]
+        store.updateTranscriptSegmentText(last.id, text)
+        last.text = plain
+        return last.id
+      }
+
+      const segmentId = store.addTranscriptSegment({
         sessionId,
         roundId,
         slideIndex: currentSlide,
@@ -531,6 +563,17 @@ wss.on('connection', (clientWs, { sessionId }) => {
         endMs: nowMs,
         isFinal: true,
       })
+      if (segmentId != null) {
+        recentPolished.push({ id: segmentId, text: plain })
+        if (recentPolished.length > 12) recentPolished.splice(0, recentPolished.length - 12)
+      }
+      return segmentId
+    },
+    onPolishedText: (segmentId, polishedText) => {
+      store.updateTranscriptSegmentText(segmentId, polishedText)
+      const plain = polishedText.replace(/^\[说话人\d+\]\s*/, '')
+      const item = recentPolished.find((r) => r.id === segmentId)
+      if (item) item.text = plain
     },
   })
 

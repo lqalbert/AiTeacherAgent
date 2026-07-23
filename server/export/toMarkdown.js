@@ -1,5 +1,6 @@
 import { joinTranscriptSegments } from '../utils/transcriptText.js'
 import { mindMapToMarkdownLines } from '../utils/mindMap.js'
+import { formatBeijingTime } from '../utils/time.js'
 
 export function buildMarkdownReport(report) {
   const { session, analysis, questions, transcript, currentRound } = report
@@ -9,11 +10,11 @@ export function buildMarkdownReport(report) {
   lines.push('')
   if (currentRound) {
     lines.push(`- 课次：第 ${currentRound.round_number} 节`)
-    lines.push(`- 本节开始：${currentRound.started_at}`)
-    if (currentRound.ended_at) lines.push(`- 本节结束：${currentRound.ended_at}`)
+    lines.push(`- 本节开始：${formatBeijingTime(currentRound.started_at)}`)
+    if (currentRound.ended_at) lines.push(`- 本节结束：${formatBeijingTime(currentRound.ended_at)}`)
   } else {
-    lines.push(`- 开始时间：${session.started_at}`)
-    if (session.ended_at) lines.push(`- 结束时间：${session.ended_at}`)
+    lines.push(`- 开始时间：${formatBeijingTime(session.started_at)}`)
+    if (session.ended_at) lines.push(`- 结束时间：${formatBeijingTime(session.ended_at)}`)
   }
   lines.push('')
 

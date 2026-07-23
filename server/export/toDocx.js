@@ -8,6 +8,7 @@ import {
 } from 'docx'
 import { joinTranscriptSegments } from '../utils/transcriptText.js'
 import { mindMapToBulletItems } from '../utils/mindMap.js'
+import { formatBeijingTime } from '../utils/time.js'
 
 function heading(text, level = HeadingLevel.HEADING_1) {
   return new Paragraph({ text, heading: level, spacing: { after: 200 } })
@@ -33,8 +34,8 @@ export async function buildDocxBuffer(report) {
   const children = []
 
   children.push(heading(session.title))
-  children.push(body(`开始时间：${session.started_at}`))
-  if (session.ended_at) children.push(body(`结束时间：${session.ended_at}`))
+  children.push(body(`开始时间：${formatBeijingTime(session.started_at)}`))
+  if (session.ended_at) children.push(body(`结束时间：${formatBeijingTime(session.ended_at)}`))
 
   if (analysis) {
     children.push(heading('课堂总结', HeadingLevel.HEADING_2))

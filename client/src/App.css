@@ -22,6 +22,22 @@ body {
   max-width: 1100px;
   margin: 0 auto;
   padding: 24px;
+  font-size: 14px;
+}
+
+/* 工作台 / 我的课程 共用页头字号 */
+.app-page-title.ant-typography {
+  margin: 0 !important;
+  font-size: 24px !important;
+  line-height: 1.35 !important;
+  font-weight: 600 !important;
+}
+
+.app-page-subtitle.ant-typography {
+  display: block;
+  margin-top: 8px !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
 }
 
 .page.center {
@@ -113,13 +129,6 @@ body {
 
 .login-brand .agent-console-avatar {
   margin: 0 auto;
-}
-
-.login-hint {
-  display: block;
-  margin-top: 16px;
-  font-size: 12px;
-  text-align: center;
 }
 
 .courses-agent-entry.ant-btn {
@@ -275,17 +284,15 @@ body {
 }
 
 .subtitle-lyrics-item {
-  transition: opacity 0.35s ease, transform 0.35s ease;
+  transition: opacity 0.15s ease;
 }
 
 .subtitle-lyrics-item.is-past {
-  opacity: 0.38;
-  transform: scale(0.96);
+  opacity: 0.4;
 }
 
 .subtitle-lyrics-item.is-current {
   opacity: 1;
-  transform: scale(1);
 }
 
 .subtitle-lyrics-item.is-current .subtitle-lyrics-text {
@@ -294,13 +301,12 @@ body {
 }
 
 .subtitle-lyrics-item.is-interim .subtitle-lyrics-text {
-  opacity: 0.78;
+  opacity: 0.85;
   font-weight: 500;
 }
 
 .subtitle-lyrics-item.is-upcoming {
-  opacity: 0.22;
-  transform: scale(0.94);
+  opacity: 0.25;
 }
 
 .subtitle-lyrics-text {
@@ -434,6 +440,17 @@ body {
 .ppt-slide-stage {
   position: relative;
   flex-shrink: 0;
+  /* 固定 16:9 画幅内，内容等比缩小后居中，完整展示不裁切 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+}
+
+.ppt-viewer-wrap:fullscreen .ppt-slide-stage,
+.ppt-viewer-wrap:-webkit-full-screen .ppt-slide-stage,
+.ppt-viewer-wrap.is-fullscreen .ppt-slide-stage {
+  background: #000;
 }
 
 .ppt-slide-layer {
@@ -445,7 +462,8 @@ body {
 }
 
 .ppt-slide-current {
-  position: relative;
+  position: absolute;
+  z-index: 0;
 }
 
 .ppt-slide-view {
@@ -708,6 +726,7 @@ body {
 /* Agent workspace — competition-facing entry */
 .agent-console-page {
   min-height: 100vh;
+  font-size: 14px;
   background:
     radial-gradient(ellipse 70% 50% at 0% 0%, rgba(61, 184, 158, 0.12), transparent 55%),
     #f5f7fa;
@@ -717,11 +736,15 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 20px;
   flex-wrap: wrap;
-  padding: 16px 24px;
+  padding: 24px;
   background: rgba(255, 255, 255, 0.92);
   border-bottom: 1px solid rgba(15, 107, 92, 0.1);
+}
+
+.agent-console-brand .app-page-subtitle {
+  margin-top: 4px !important;
 }
 
 .agent-console-brand {
@@ -826,7 +849,7 @@ body {
 .agent-chat-bubble.is-system {
   background: #fafafa;
   color: rgba(0, 0, 0, 0.65);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .agent-chat-name {
@@ -1049,8 +1072,24 @@ body {
   flex-direction: column;
   gap: 6px;
   margin: 10px 0 14px;
-  font-size: 13px;
+  font-size: 14px;
   color: rgba(0, 0, 0, 0.65);
+}
+
+.agent-field > span {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.agent-form-panel .ant-typography,
+.agent-panel .ant-typography {
+  font-size: 14px;
+}
+
+.agent-form-panel .ant-input,
+.agent-form-panel .ant-input-affix-wrapper,
+.agent-form-panel textarea.ant-input {
+  font-size: 14px;
 }
 
 .agent-inline-row {

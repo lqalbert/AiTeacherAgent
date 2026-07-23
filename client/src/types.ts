@@ -12,7 +12,8 @@ export type SubtitleStyle = {
 }
 
 export const DEFAULT_SUBTITLE_STYLE: SubtitleStyle = {
-  color: '#ffffff',
+  // 侧栏默认浅底，文字用深色；全屏时可在设置里改成浅色字
+  color: '#1f1f1f',
   fontSize: 24,
   fontFamily: '"HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif',
   position: 'bottom',

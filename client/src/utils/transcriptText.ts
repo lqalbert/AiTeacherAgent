@@ -22,17 +22,25 @@ export function needsSpaceBetween(prev: string, next: string): boolean {
   return false
 }
 
-/** 将多段转写文本合并为可读段落（英文保留单词间空格，中文无空格） */
+/** 将多段转写文本合并为可读段落（保留标点与分段；英文保留单词间空格） */
 export function joinTranscriptText(parts: Array<string | null | undefined>): string {
   let result = ''
   for (const raw of parts) {
-    const text = String(raw ?? '').trim()
+    const text = String(raw ?? '')
+      .replace(/^\s+|\s+$/g, '')
+      .replace(/\n{3,}/g, '\n\n')
     if (!text) continue
     if (!result) {
       result = text
       continue
     }
-    result = needsSpaceBetween(result, text) ? `${result} ${text}` : result + text
+    const prev = result.replace(/\s+$/g, '')
+    const next = text.replace(/^\s+/g, '')
+    if (/[。！？；\n]$/.test(prev)) {
+      result = `${prev}\n${next}`
+      continue
+    }
+    result = needsSpaceBetween(prev, next) ? `${prev} ${next}` : prev + next
   }
   return result
 }

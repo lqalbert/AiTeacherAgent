@@ -114,10 +114,14 @@ export function ClassroomPage() {
     setAsrStreaming(false)
   }, [flushSubtitles])
 
-  const { active: micActive, error: micError } = useAudioCapture(recording, sendAudio, {
-    onSpeechStart: handleSpeechStart,
-    onSilence: handleSilence,
-  })
+  const { active: micActive, error: micError, start: startMic, stop: stopMic } = useAudioCapture(
+    recording,
+    sendAudio,
+    {
+      onSpeechStart: handleSpeechStart,
+      onSilence: handleSilence,
+    },
+  )
 
   const handleSlideChange = useCallback(
     (index: number, total: number) => {
@@ -186,11 +190,18 @@ export function ClassroomPage() {
       flushSubtitles()
       setAsrStreaming(false)
       setRecording(false)
+      stopMic()
       stopAsr()
     } else {
       resetSubtitles()
       setAsrStreaming(false)
       setRecording(true)
+      // 必须在点击手势里同步启动麦克风，否则 AudioContext 可能一直 suspended
+      void startMic()
+      // 开始听课时立刻记下当前页，避免必须翻页才有课堂事件
+      if (slideCount > 0) {
+        recordSlide(sessionId, slideIndex, Date.now() - roundStartRef.current).catch(() => {})
+      }
       message.info('已开始听课，请对着麦克风正常讲授')
     }
   }
@@ -208,6 +219,7 @@ export function ClassroomPage() {
           flushSubtitles()
           setAsrStreaming(false)
           setRecording(false)
+          stopMic()
           stopAsr()
           const result = await endSession(sessionId)
           const endedRound = result.endedRound ?? roundNo
@@ -390,8 +402,8 @@ export function ClassroomPage() {
             isReview
               ? '该节暂无转写记录'
               : recording
-                ? '正在听课，说话后字幕将显示在此'
-                : '点击「开始听课」后，字幕将在此滚动显示'
+                ? '正在听课，讲完一句后将完整显示字幕'
+                : '点击「开始听课」，讲完一句后显示完整字幕'
           }
         />
       </main>

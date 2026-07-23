@@ -66,6 +66,8 @@ export function useAsrSocket({ sessionId, enabled, slideIndex, onLive }: UseAsrO
 
     ws.onopen = () => {
       setStatus('connected')
+      setError(null)
+      setErrorHint(null)
       // 重连后必须立刻同步当前页，否则口述会全部记在旧页/第 1 页
       try {
         ws.send(JSON.stringify({ type: 'slide', slideIndex: slideRef.current }))
@@ -81,6 +83,8 @@ export function useAsrSocket({ sessionId, enabled, slideIndex, onLive }: UseAsrO
         const msg = JSON.parse(ev.data)
         if (msg.type === 'connected') {
           setStatus('connected')
+          setError(null)
+          setErrorHint(null)
           setAiPolish(Boolean(msg.aiPolish))
         } else if (msg.type === 'live' && msg.text) {
           const speaker =

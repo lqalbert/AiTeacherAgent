@@ -3,10 +3,13 @@ export function ptToPx(pt: number): number {
   return (pt / 72) * 96
 }
 
+/** 课堂放映固定画幅比例（宽:高） */
+export const SLIDE_DISPLAY_ASPECT = 16 / 9
+
 /** 右侧字幕栏最小宽度（与 CSS 保持一致） */
 export const SUBTITLE_PANEL_MIN_WIDTH = 240
 
-/** 在容器内按幻灯片宽高比 fit-contain */
+/** 在容器内按指定宽高比 fit-contain */
 export function fitSlideViewport(
   containerWidth: number,
   containerHeight: number,
@@ -25,8 +28,8 @@ export function fitSlideViewport(
 }
 
 /**
- * 课堂分栏布局：在「可用宽 × 可用高」内 fit-contain。
- * 优先占满高度；若宽度超出（需给字幕留位），则按宽度收缩并保持比例。
+ * 课堂分栏布局：外框固定 16:9，内容按幻灯片原始比例等比缩小（contain），
+ * 保证整页内容完整显示在 16:9 画幅内。
  */
 export function computeSlideLayoutForSplitView(
   stageWidth: number,
@@ -42,12 +45,14 @@ export function computeSlideLayoutForSplitView(
   const availableWidth = Math.max(320, stageWidth - subtitleMinWidth)
   const availableHeight = stageHeight
 
+  // 外框始终 16:9，随可用区域等比缩放
+  const viewport = fitSlideViewport(availableWidth, availableHeight, SLIDE_DISPLAY_ASPECT)
+
   const slidePxW = ptToPx(slideWidthPt)
   const slidePxH = ptToPx(slideHeightPt)
-  const aspect = slidePxW / slidePxH
 
-  const viewport = fitSlideViewport(availableWidth, availableHeight, aspect)
-  const scale = viewport.height / slidePxH
+  // 内容 contain：按较小边缩放，避免裁切
+  const scale = Math.min(viewport.width / slidePxW, viewport.height / slidePxH)
 
   return { viewport, scale }
 }

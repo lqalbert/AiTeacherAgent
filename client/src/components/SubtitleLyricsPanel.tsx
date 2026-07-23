@@ -23,7 +23,7 @@ const LIGHT_SPEAKER_COLORS = [
 export function SubtitleLyricsPanel({
   lines,
   style,
-  emptyHint = '开始转写后，字幕将在此滚动显示',
+  emptyHint = '讲完一句后，完整字幕将显示在这里',
   title = '课堂字幕',
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -31,13 +31,15 @@ export function SubtitleLyricsPanel({
 
   const currentId = lines.find((l) => l.status === 'current')?.id
 
+  // 仅当切换到新句时滚动；同一句递进改字不触发 scroll，避免闪烁
   useEffect(() => {
-    currentRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  }, [currentId, lines.length])
+    currentRef.current?.scrollIntoView({ block: 'nearest', behavior: 'auto' })
+  }, [currentId])
 
   const panelBg = style.panelBackgroundColor || '#ffffff'
   const panelIsLight = isLightColor(panelBg)
-  const panelTextColor = contrastTextColor(style.color, panelIsLight)
+  // 始终使用用户设置的文字颜色，不再因对比度强制改色
+  const textColor = normalizeHex(style.color) || '#1f1f1f'
   const speakerPalette = panelIsLight ? LIGHT_SPEAKER_COLORS : SPEAKER_COLORS
   const showBg = style.backgroundOpacity > 0.05
   const lineBg = showBg
@@ -49,6 +51,13 @@ export function SubtitleLyricsPanel({
   const muted = panelIsLight ? 'rgba(0, 0, 0, 0.45)' : 'rgba(255, 255, 255, 0.55)'
   const empty = panelIsLight ? 'rgba(0, 0, 0, 0.35)' : 'rgba(255, 255, 255, 0.35)'
   const border = panelIsLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)'
+  // 对比度不足时加描边，保证可读且不改用户所选颜色
+  const needOutline = panelIsLight === isLightColor(textColor)
+  const textShadow = needOutline
+    ? panelIsLight
+      ? '0 0 2px rgba(0,0,0,0.55), 0 1px 2px rgba(0,0,0,0.35)'
+      : '0 0 2px rgba(255,255,255,0.7), 0 1px 2px rgba(0,0,0,0.45)'
+    : undefined
 
   return (
     <aside
@@ -69,14 +78,14 @@ export function SubtitleLyricsPanel({
             style={{
               fontFamily: style.fontFamily,
               fontSize: style.fontSize,
-              color: panelTextColor,
+              color: textColor,
             }}
           >
             {lines.map((line) => {
               const speakerColor =
                 line.speaker > 0
-                  ? speakerPalette[line.speaker % speakerPalette.length] || panelTextColor
-                  : panelTextColor
+                  ? speakerPalette[line.speaker % speakerPalette.length] || textColor
+                  : textColor
               const label = speakerLabel(line.speaker)
               const isCurrent = line.status === 'current'
               const isUpcoming = line.status === 'upcoming'
@@ -97,7 +106,7 @@ export function SubtitleLyricsPanel({
                 >
                   <div
                     className={['subtitle-lyrics-text', showBg ? 'has-bg' : ''].filter(Boolean).join(' ')}
-                    style={{ color: speakerColor, ...lineBg }}
+                    style={{ color: speakerColor, textShadow, ...lineBg }}
                   >
                     {label && <span className="subtitle-speaker">{label}</span>}
                     {line.text}
@@ -112,16 +121,27 @@ export function SubtitleLyricsPanel({
   )
 }
 
-/** 保证字幕与侧栏背景有足够对比度 */
-function contrastTextColor(color: string, panelIsLight: boolean) {
-  const textIsLight = isLightColor(color)
-  if (panelIsLight && textIsLight) return '#1f1f1f'
-  if (!panelIsLight && !textIsLight) return '#ffffff'
-  return color
+/** 规范化为 #RRGGBB */
+function normalizeHex(input: string): string {
+  const raw = String(input || '').trim()
+  if (!raw) return ''
+  if (raw.startsWith('#')) {
+    const h = raw.slice(1)
+    if (h.length === 3) return `#${h.split('').map((c) => c + c).join('')}`
+    if (h.length >= 6) return `#${h.slice(0, 6)}`
+    return raw
+  }
+  const rgb = raw.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i)
+  if (rgb) {
+    const to = (n: string) => Number(n).toString(16).padStart(2, '0')
+    return `#${to(rgb[1])}${to(rgb[2])}${to(rgb[3])}`
+  }
+  return raw
 }
 
 function isLightColor(hex: string) {
-  const rgb = hexToRgb(hex)
+  const normalized = normalizeHex(hex)
+  const rgb = hexToRgb(normalized)
     .split(',')
     .map((v) => Number(v.trim()))
   if (rgb.length < 3 || rgb.some((n) => Number.isNaN(n))) return false
@@ -131,9 +151,11 @@ function isLightColor(hex: string) {
 }
 
 function hexToRgb(hex: string) {
-  const h = hex.replace('#', '')
-  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h
+  const normalized = normalizeHex(hex).replace('#', '') || '000000'
+  const full =
+    normalized.length === 3 ? normalized.split('').map((c) => c + c).join('') : normalized.slice(0, 6)
   const n = parseInt(full, 16)
+  if (Number.isNaN(n)) return '0, 0, 0'
   const r = (n >> 16) & 255
   const g = (n >> 8) & 255
   const b = n & 255

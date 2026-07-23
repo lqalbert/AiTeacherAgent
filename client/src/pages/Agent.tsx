@@ -29,6 +29,7 @@ import {
 } from '../api'
 import { useAuth } from '../auth/AuthContext'
 import type { AgentConfig, KnowledgeDoc } from '../types/agentConfig'
+import { formatBeijingTime } from '../utils/time'
 
 const { Title, Paragraph, Text } = Typography
 const { TextArea } = Input
@@ -136,23 +137,31 @@ export function AgentPage() {
             {(config.role.name || '智').slice(0, 1)}
           </div>
           <div>
-            <Title level={3} style={{ margin: 0 }}>
+            <Title level={3} className="app-page-title">
               {config.role.name || '智课随行'}
             </Title>
-            <Text type="secondary">
+            <Text type="secondary" className="app-page-subtitle">
               {user?.username ? `${user.username} · ` : ''}
               智能体工作台 · 手动配置，生成报告时自动读取
             </Text>
           </div>
         </div>
         <Space wrap>
-          <Button icon={<FolderOpenOutlined />} onClick={() => navigate('/courses')}>
+          <Button size="large" icon={<FolderOpenOutlined />} onClick={() => navigate('/courses')}>
             我的课程
           </Button>
-          <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={handleSave}>
+          <Button
+            type="primary"
+            size="large"
+            icon={<SaveOutlined />}
+            loading={saving}
+            onClick={handleSave}
+          >
             保存配置
           </Button>
-          <Button onClick={() => logout().then(() => navigate('/login'))}>退出登录</Button>
+          <Button size="large" onClick={() => logout().then(() => navigate('/login'))}>
+            退出登录
+          </Button>
         </Space>
       </header>
 
@@ -483,7 +492,7 @@ export function AgentPage() {
                       <div className="agent-kb-meta">
                         {doc.filename} · {doc.charCount} 字
                         {doc.hasText ? '' : ' · 未能提取文本'} ·{' '}
-                        {new Date(doc.createdAt).toLocaleString()}
+                        {formatBeijingTime(doc.createdAt)}
                       </div>
                     </div>
                     <Button size="small" danger onClick={() => handleDeleteDoc(doc.id)}>

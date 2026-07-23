@@ -112,13 +112,28 @@ export function parseRtasrLlmMessage(data) {
   try {
     const msg = JSON.parse(data.toString())
 
-    if (msg.action === 'started' || (msg.msg_type === 'action' && msg.data === 'started')) {
-      return { type: 'started', raw: msg }
+    // 新版：{"msg_type":"action","data":{"action":"started","sessionId":"..."}}
+    // 旧版：{"action":"started"} 或 {"msg_type":"action","data":"started"}
+    const nestedAction =
+      msg?.data && typeof msg.data === 'object' ? msg.data.action : null
+    const flatAction =
+      msg.action ||
+      (typeof msg.data === 'string' ? msg.data : null) ||
+      nestedAction
+
+    if (flatAction === 'started' || msg.action === 'started') {
+      const sessionId =
+        (msg?.data && typeof msg.data === 'object' && msg.data.sessionId) ||
+        msg.sessionId ||
+        null
+      return { type: 'started', sessionId, raw: msg }
     }
 
-    if (msg.action === 'error' || msg.msg_type === 'error') {
-      const code = String(msg.code || '')
-      const desc = msg.desc || msg.message || '讯飞转写大模型错误'
+    if (msg.action === 'error' || msg.msg_type === 'error' || nestedAction === 'error') {
+      const errPayload = typeof msg.data === 'object' && msg.data ? msg.data : msg
+      const code = String(errPayload.code || msg.code || '')
+      const desc =
+        errPayload.desc || errPayload.message || msg.desc || msg.message || '讯飞转写大模型错误'
       return {
         type: 'error',
         code,

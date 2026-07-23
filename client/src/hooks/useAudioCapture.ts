@@ -74,6 +74,8 @@ export function useAudioCapture(
   }, [])
 
   const stop = useCallback(() => {
+    const ctx = ctxRef.current as (AudioContext & { __cleanupResume?: () => void }) | null
+    ctx?.__cleanupResume?.()
     processorRef.current?.disconnect()
     processorRef.current = null
     gainRef.current?.disconnect()
@@ -125,6 +127,43 @@ export function useAudioCapture(
       return
     }
     try {
+      // 必须在用户点击的同步阶段创建并 resume AudioContext。
+      // 若放在 await getUserMedia 之后，手势上下文已丢失，常见表现是：
+      // 点「开始听课」无字幕，翻页（再次手势）后 AudioContext 才跑起来。
+      const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+      const ctx = new Ctx({ sampleRate: TARGET_SAMPLE_RATE, latencyHint: 'interactive' })
+      ctxRef.current = ctx
+      try {
+        await ctx.resume()
+      } catch {
+        // ignore
+      }
+
+      const resumeCtx = () => {
+        const c = ctxRef.current
+        if (c && c.state === 'suspended') {
+          c.resume().catch(() => {})
+        }
+      }
+      queueMicrotask(resumeCtx)
+      window.setTimeout(resumeCtx, 0)
+      window.setTimeout(resumeCtx, 100)
+
+      const onVisibility = () => {
+        if (document.visibilityState === 'visible') resumeCtx()
+      }
+      document.addEventListener('visibilitychange', onVisibility)
+      const resumeTimer = window.setInterval(resumeCtx, 2000)
+      const onUserGesture = () => resumeCtx()
+      window.addEventListener('pointerdown', onUserGesture)
+      window.addEventListener('keydown', onUserGesture)
+      ;(ctx as AudioContext & { __cleanupResume?: () => void }).__cleanupResume = () => {
+        document.removeEventListener('visibilitychange', onVisibility)
+        window.clearInterval(resumeTimer)
+        window.removeEventListener('pointerdown', onUserGesture)
+        window.removeEventListener('keydown', onUserGesture)
+      }
+
       // 关闭 noiseSuppression，减少课堂小声/方言被抹掉；AGC 保留以抬升音量
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -135,14 +174,13 @@ export function useAudioCapture(
           autoGainControl: true,
         },
       })
-      streamRef.current = stream
-
-      const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-      const ctx = new Ctx({ sampleRate: TARGET_SAMPLE_RATE, latencyHint: 'interactive' })
-      ctxRef.current = ctx
-      if (ctx.state === 'suspended') {
-        await ctx.resume().catch(() => {})
+      // 若在 await 期间被 stop()，放弃后续接线
+      if (ctxRef.current !== ctx) {
+        stream.getTracks().forEach((t) => t.stop())
+        return
       }
+      streamRef.current = stream
+      resumeCtx()
 
       const source = ctx.createMediaStreamSource(stream)
       // 静音节点：保持处理图运行，但不回放麦克风（避免啸叫 / 浏览器压麦）
@@ -154,6 +192,7 @@ export function useAudioCapture(
       processorRef.current = processor
 
       processor.onaudioprocess = (e) => {
+        if (ctx.state === 'suspended') resumeCtx()
         const input = e.inputBuffer.getChannelData(0)
         const down = downsample(input, ctx.sampleRate, TARGET_SAMPLE_RATE)
         handleVoiceLevel(pcmRms(down))
@@ -181,14 +220,14 @@ export function useAudioCapture(
     }
   }, [stop, handleVoiceLevel])
 
+  // 仅在关闭听课时停麦。不要在 effect 里 start()——会脱离用户点击手势，
+  // 导致 AudioContext 挂起（表现为「开始听课后无字幕，翻页后才有」）。
+  // 也不要在 enabled:false→true 的 cleanup 里 stop()，否则会掐掉点击里刚启动的麦克风。
   useEffect(() => {
-    if (enabled) {
-      start()
-    } else {
-      stop()
-    }
-    return stop
-  }, [enabled, start, stop])
+    if (!enabled) stop()
+  }, [enabled, stop])
+
+  useEffect(() => () => stop(), [stop])
 
   return { active, error, start, stop }
 }

@@ -476,6 +476,14 @@ export function addTranscriptSegment({ sessionId, roundId, slideIndex, text, sta
   return result.lastInsertRowid
 }
 
+export function updateTranscriptSegmentText(segmentId, text) {
+  if (!segmentId || text == null) return false
+  const result = getDb()
+    .prepare(`UPDATE transcript_segments SET text = ? WHERE id = ?`)
+    .run(String(text), segmentId)
+  return result.changes > 0
+}
+
 export function getTranscriptSegments(sessionId, roundId = null) {
   if (roundId) {
     return getDb()

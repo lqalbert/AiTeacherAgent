@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 
-const { Title, Paragraph, Text } = Typography
+const { Title } = Typography
 
 export function LoginPage() {
   const { user, loading, login } = useAuth()
@@ -35,12 +35,9 @@ export function LoginPage() {
           <div className="agent-console-avatar" aria-hidden>
             智
           </div>
-          <Title level={3} style={{ margin: '12px 0 4px' }}>
+          <Title level={3} style={{ margin: '12px 0 24px' }}>
             智课随行
           </Title>
-          <Paragraph type="secondary" style={{ marginBottom: 24 }}>
-            登录后进入智能体工作台 · 配置与课次按账号隔离
-          </Paragraph>
         </div>
         <Form layout="vertical" onFinish={onFinish} requiredMark={false}>
           <Form.Item
@@ -66,9 +63,6 @@ export function LoginPage() {
             登录
           </Button>
         </Form>
-        <Text type="secondary" className="login-hint">
-          账号与密码均经加密存储；默认账号请联系管理员。
-        </Text>
       </Card>
     </div>
   )
