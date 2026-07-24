@@ -131,6 +131,18 @@ body {
   margin: 0 auto;
 }
 
+.login-hint {
+  margin: 16px 0 0 !important;
+  text-align: center;
+  font-size: 13px !important;
+}
+
+.login-tagline {
+  margin: 0 !important;
+  text-align: center;
+  font-size: 13px !important;
+}
+
 .courses-agent-entry.ant-btn {
   height: 40px;
   padding-inline: 18px;
@@ -166,6 +178,41 @@ body {
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   flex-wrap: wrap;
   z-index: 10;
+}
+
+.classroom-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+}
+
+.classroom-toolbar-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.classroom-toolbar-tags {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.classroom-toolbar-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.classroom-page-chip {
+  display: none;
 }
 
 .classroom-toolbar .ant-typography {
@@ -345,6 +392,14 @@ body {
   padding: 10px 16px;
   background: #fff;
   border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.replay-controls-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  width: 100%;
 }
 
 .replay-controls .ant-typography,
@@ -923,6 +978,7 @@ body {
   padding: 16px 12px;
   border-right: 1px solid rgba(15, 107, 92, 0.08);
   background: rgba(255, 255, 255, 0.55);
+  min-width: 180px;
 }
 
 .agent-console-nav-item {
@@ -1116,25 +1172,581 @@ body {
 }
 
 @media (max-width: 720px) {
-  .agent-console-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .agent-console-nav {
-    flex-direction: row;
-    flex-wrap: wrap;
-    border-right: none;
-    border-bottom: 1px solid rgba(15, 107, 92, 0.08);
-  }
-
-  .agent-console-nav-item {
-    flex: 1 1 auto;
-    justify-content: center;
-  }
-
   .agent-kb-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
+/* =========================
+   手机端重写（≤768px）
+   ========================= */
+@media (max-width: 768px) {
+  :root {
+    --m-pad: 16px;
+    --m-radius: 16px;
+    --m-brand: #0f6b5c;
+    --m-brand-soft: #e8f5f1;
+    --m-ink: #14221f;
+    --m-muted: rgba(20, 34, 31, 0.55);
+    --m-line: rgba(15, 107, 92, 0.12);
+    --m-safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  body {
+    background: #f3f7f6;
+  }
+
+  /* —— 登录 —— */
+  .login-page {
+    min-height: 100dvh;
+    padding: calc(24px + env(safe-area-inset-top, 0px)) var(--m-pad)
+      calc(24px + var(--m-safe-bottom));
+    align-items: stretch;
+    justify-content: flex-end;
+    background:
+      radial-gradient(ellipse 120% 70% at 50% -10%, rgba(61, 184, 158, 0.28), transparent 55%),
+      linear-gradient(180deg, #dff3ed 0%, #f3f7f6 48%, #f3f7f6 100%);
+  }
+
+  .login-card.ant-card {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    border: none;
+    border-radius: 24px 24px 20px 20px;
+    box-shadow: 0 -8px 40px rgba(15, 107, 92, 0.08);
+    background: rgba(255, 255, 255, 0.96);
+  }
+
+  .login-card .ant-card-body {
+    padding: 28px 20px 22px;
+  }
+
+  .login-brand {
+    margin-bottom: 8px;
+  }
+
+  .login-brand .agent-console-avatar {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    font-size: 24px;
+  }
+
+  .login-brand .ant-typography {
+    margin: 14px 0 4px !important;
+    font-size: 26px !important;
+    letter-spacing: 0.02em;
+    color: var(--m-ink) !important;
+  }
+
+  .login-hint {
+    margin-top: 18px !important;
+    line-height: 1.5;
+  }
+
+  .login-card .ant-btn-lg {
+    height: 48px;
+    font-size: 16px;
+    border-radius: 12px;
+  }
+
+  .login-card .ant-input-affix-wrapper-lg,
+  .login-card .ant-input-affix-wrapper {
+    border-radius: 12px;
+    padding-block: 10px;
+  }
+
+  /* —— 通用页 —— */
+  .page {
+    max-width: none;
+    padding: calc(12px + env(safe-area-inset-top, 0px)) var(--m-pad)
+      calc(28px + var(--m-safe-bottom));
+  }
+
+  .app-page-title.ant-typography {
+    font-size: 22px !important;
+    letter-spacing: -0.02em;
+  }
+
+  .app-page-subtitle.ant-typography {
+    font-size: 13px !important;
+    color: var(--m-muted) !important;
+  }
+
+  .page-header,
+  .home-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+    margin-bottom: 18px;
+  }
+
+  .home-header .ant-space,
+  .page-header .ant-space {
+    width: 100%;
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px !important;
+  }
+
+  .home-header .ant-space-item,
+  .page-header .ant-space-item {
+    width: 100%;
+  }
+
+  .home-header .ant-btn,
+  .page-header .ant-btn {
+    width: 100%;
+  }
+
+  .courses-agent-entry.ant-btn {
+    grid-column: 1 / -1;
+  }
+
+  .home-page .ant-card {
+    border: none;
+    border-radius: var(--m-radius);
+    box-shadow: 0 8px 28px rgba(15, 107, 92, 0.06);
+  }
+
+  .home-page .ant-list-item {
+    padding: 16px 4px !important;
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+
+  .home-page .round-list {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-left: none;
+    border-radius: 12px;
+    background: var(--m-brand-soft);
+  }
+
+  .home-page .round-list-item {
+    padding: 10px 0;
+    gap: 8px;
+  }
+
+  /* —— 工作台 —— */
+  .agent-console-page {
+    min-height: 100dvh;
+    background:
+      radial-gradient(ellipse 100% 40% at 50% 0%, rgba(61, 184, 158, 0.16), transparent 60%),
+      #f3f7f6;
+  }
+
+  .agent-console-top {
+    padding: calc(14px + env(safe-area-inset-top, 0px)) var(--m-pad) 14px;
+    gap: 12px;
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(10px);
+  }
+
+  .agent-console-top > .ant-space {
+    width: 100%;
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px !important;
+  }
+
+  .agent-console-top > .ant-space .ant-space-item {
+    width: 100%;
+  }
+
+  .agent-console-top > .ant-space .ant-btn {
+    width: 100%;
+  }
+
+  .agent-console-top > .ant-space .ant-space-item:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .agent-console-layout {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    max-width: none;
+    margin: 0;
+  }
+
+  .agent-console-nav {
+    position: sticky;
+    top: 0;
+    z-index: 25;
+    display: flex !important;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    min-height: 56px;
+    padding: 10px var(--m-pad);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    border-right: none;
+    border-bottom: 1px solid var(--m-line);
+    background: #fff;
+    box-shadow: 0 4px 16px rgba(15, 107, 92, 0.06);
+  }
+
+  .agent-console-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .agent-console-nav-item {
+    flex: 0 0 auto;
+    width: auto;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 14px;
+    border-radius: 999px;
+    white-space: nowrap;
+    background: #f3f7f6;
+    color: var(--m-ink);
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .agent-console-nav-item:hover {
+    background: var(--m-brand-soft);
+  }
+
+  .agent-console-nav-item.is-active {
+    background: var(--m-brand);
+    color: #fff;
+  }
+
+  .agent-console-main {
+    padding: 14px var(--m-pad) calc(24px + var(--m-safe-bottom));
+  }
+
+  .agent-panel {
+    border-radius: var(--m-radius);
+    padding: 16px;
+  }
+
+  /* —— 课堂：顶栏 + 课件 + 字幕片 + 底栏 —— */
+  .classroom-page,
+  .classroom-page.is-stacked {
+    height: 100dvh;
+    max-height: 100dvh;
+    background: #edf3f1;
+    padding-bottom: calc(64px + var(--m-safe-bottom));
+  }
+
+  .classroom-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding: calc(6px + env(safe-area-inset-top, 0px)) 8px 8px;
+    background: rgba(255, 255, 255, 0.96);
+    border-bottom: 1px solid var(--m-line);
+    backdrop-filter: blur(12px);
+  }
+
+  .classroom-toolbar-left {
+    width: 100%;
+    flex-wrap: nowrap;
+    gap: 4px;
+    padding: 0 4px;
+  }
+
+  .classroom-back-btn.ant-btn {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    flex-shrink: 0;
+    color: var(--m-brand) !important;
+  }
+
+  .classroom-toolbar-meta {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .classroom-toolbar-title {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 15px !important;
+    line-height: 1.3 !important;
+  }
+
+  .classroom-toolbar-tags {
+    gap: 4px;
+  }
+
+  .classroom-toolbar-tags .ant-tag {
+    margin: 0;
+    border-radius: 999px;
+    font-size: 11px;
+    line-height: 18px;
+    padding-inline: 8px;
+  }
+
+  .classroom-page-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    min-width: 44px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: var(--m-brand-soft);
+    color: var(--m-brand) !important;
+    font-size: 12px !important;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+  }
+
+  .classroom-toolbar-actions {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(52px, 1fr));
+    gap: 6px;
+    padding: 10px 12px calc(10px + var(--m-safe-bottom));
+    background: rgba(255, 255, 255, 0.97);
+    border-top: 1px solid var(--m-line);
+    box-shadow: 0 -10px 30px rgba(15, 107, 92, 0.08);
+    backdrop-filter: blur(14px);
+  }
+
+  .classroom-toolbar-actions .ant-btn {
+    height: 44px;
+    min-width: 0;
+    padding-inline: 6px;
+    border-radius: 12px;
+    font-size: 12px;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    line-height: 1.1;
+  }
+
+  .classroom-toolbar-actions .ant-btn .anticon {
+    font-size: 18px;
+  }
+
+  .classroom-listen-btn.ant-btn {
+    grid-column: span 2;
+    flex-direction: row !important;
+    gap: 6px !important;
+    font-size: 14px !important;
+    font-weight: 600;
+    background: var(--m-brand) !important;
+    border-color: var(--m-brand) !important;
+    color: #fff !important;
+  }
+
+  .classroom-listen-btn.ant-btn-default {
+    background: #fff !important;
+    color: var(--m-brand) !important;
+    border-color: rgba(15, 107, 92, 0.35) !important;
+  }
+
+  .classroom-end-btn.ant-btn {
+    font-weight: 600;
+  }
+
+  .classroom-stage.classroom-split {
+    flex-direction: column;
+    gap: 0;
+    background: transparent !important;
+  }
+
+  .classroom-ppt-pane {
+    width: 100% !important;
+    flex: 1 1 0 !important;
+    min-height: 0;
+    margin: 8px var(--m-pad) 0;
+    border-radius: 14px;
+    overflow: hidden;
+    background: #fff !important;
+    box-shadow: 0 6px 20px rgba(15, 107, 92, 0.07);
+  }
+
+  .classroom-ppt-pane .ppt-viewer-wrap {
+    background: #fff;
+  }
+
+  .subtitle-lyrics-panel {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 0;
+    height: min(30dvh, 220px);
+    max-height: 32dvh;
+    margin: 10px var(--m-pad) 8px;
+    border: 1px solid var(--m-line);
+    border-left: 1px solid var(--m-line);
+    border-radius: 16px 16px 14px 14px;
+    background: #fff;
+    box-shadow: 0 8px 24px rgba(15, 107, 92, 0.06);
+    overflow: hidden;
+  }
+
+  .subtitle-lyrics-panel-header {
+    position: relative;
+    padding: 14px 14px 8px;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: none;
+    color: var(--m-brand);
+    border-bottom: none;
+  }
+
+  .subtitle-lyrics-panel-header::before {
+    content: '';
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    width: 36px;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(15, 107, 92, 0.18);
+    transform: translateX(-50%);
+  }
+
+  .subtitle-lyrics-panel-scroll {
+    padding: 4px 14px 16px;
+    mask-image: none;
+  }
+
+  .subtitle-lyrics-list {
+    gap: 10px;
+  }
+
+  .subtitle-lyrics-text {
+    font-size: 15px;
+    line-height: 1.55;
+  }
+
+  .subtitle-lyrics-empty {
+    padding: 18px 8px;
+    font-size: 13px;
+    color: var(--m-muted);
+  }
+
+  .classroom-footer {
+    display: none;
+  }
+
+  .ppt-slide-indicator {
+    display: none;
+  }
+
+  .classroom-alert {
+    margin: 0 var(--m-pad);
+    border-radius: 12px;
+    padding: 10px 12px;
+  }
+
+  .replay-controls {
+    margin: 0 var(--m-pad) 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--m-line);
+    border-radius: 14px;
+    border-top: 1px solid var(--m-line);
+    background: #fff;
+  }
+
+  .replay-controls-row {
+    gap: 8px;
+  }
+
+  .replay-slider {
+    flex: 1 1 100%;
+    min-width: 0;
+    max-width: none;
+    order: -1;
+    margin: 0 0 4px !important;
+  }
+
+  .replay-time {
+    min-width: 0;
+    font-size: 12px;
+  }
+
+  .replay-play-btn.ant-btn {
+    font-weight: 600;
+    color: var(--m-brand) !important;
+  }
+
+  /* —— 报告 —— */
+  .report-toc {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 12px;
+    padding: 12px;
+    border-radius: var(--m-radius);
+    background: #fff;
+    border: 1px solid var(--m-line);
+    box-shadow: none;
+  }
+
+  .report-toc-nav {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 8px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .report-toc-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .report-layout.is-toc-collapsed .report-toc-nav {
+    display: flex;
+  }
+
+  .report-toc-item {
+    flex: 0 0 auto;
+    width: auto;
+    white-space: nowrap;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: #f3f7f6;
+    font-size: 13px;
+  }
+
+  .report-toc-item.is-active {
+    background: var(--m-brand);
+    color: #fff;
+  }
+
+  .report-main .ant-card {
+    border-radius: var(--m-radius);
+    border: none;
+    box-shadow: 0 8px 24px rgba(15, 107, 92, 0.05);
+  }
+}
+
+@media (max-width: 480px) {
+  .subtitle-lyrics-panel {
+    height: min(28dvh, 200px);
+  }
+
+  .classroom-toolbar-actions {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .classroom-listen-btn.ant-btn {
+    grid-column: span 2;
+  }
+}
 

@@ -4,7 +4,7 @@ import {
   StepBackwardOutlined,
   StepForwardOutlined,
 } from '@ant-design/icons'
-import { Button, Select, Slider, Space, Typography } from 'antd'
+import { Button, Select, Slider, Typography } from 'antd'
 import { useEffect, useState } from 'react'
 import { formatReplayTime } from '../hooks/useCourseReplay'
 
@@ -52,7 +52,7 @@ export function ReplayControls({
 
   return (
     <div className="replay-controls">
-      <Space size="middle" wrap align="center">
+      <div className="replay-controls-row">
         <Button
           type="text"
           icon={playing ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
@@ -107,7 +107,7 @@ export function ReplayControls({
             暂无回放时间轴，可手动翻页浏览课件
           </Text>
         )}
-      </Space>
+      </div>
     </div>
   )
 }

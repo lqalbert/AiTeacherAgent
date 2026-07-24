@@ -16,7 +16,11 @@ import {
   useSlideAnimations,
   useSlideTransition,
 } from '@pagus-kit/react'
-import { computeSlideLayoutForSplitView } from '../utils/pptViewport'
+import {
+  CLASSROOM_STACK_MAX_WIDTH,
+  computeSlideLayoutForSplitView,
+} from '../utils/pptViewport'
+import { useMediaQuery } from '../hooks/useMediaQuery'
 
 export type PptViewerHandle = {
   next: () => void
@@ -68,6 +72,7 @@ export const PptViewer = forwardRef<PptViewerHandle, Props>(function PptViewer(
   const [prevSlideIndex, setPrevSlideIndex] = useState(-1)
   const [stageSize, setStageSize] = useState<{ width: number; height: number } | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const stackedLayout = useMediaQuery(`(max-width: ${CLASSROOM_STACK_MAX_WIDTH}px)`)
 
   const slideIndexRef = useRef(0)
   const lastNotifiedRef = useRef({ index: -1, total: 0 })
@@ -95,14 +100,16 @@ export const PptViewer = forwardRef<PptViewerHandle, Props>(function PptViewer(
 
   const slideLayout = useMemo(() => {
     if (!presentation?.slideSize || !stageSize) return null
+    // 全屏 / 竖屏堆叠时不再预留右侧字幕宽度
+    const subtitleReserve = isFullscreen || stackedLayout ? 0 : undefined
     return computeSlideLayoutForSplitView(
       stageSize.width,
       stageSize.height,
       presentation.slideSize.width,
       presentation.slideSize.height,
-      isFullscreen ? 0 : undefined,
+      subtitleReserve,
     )
-  }, [presentation?.slideSize, stageSize, isFullscreen])
+  }, [presentation?.slideSize, stageSize, isFullscreen, stackedLayout])
 
   useEffect(() => {
     if (!slideLayout || isFullscreen) return
@@ -175,6 +182,10 @@ export const PptViewer = forwardRef<PptViewerHandle, Props>(function PptViewer(
 
     const measureTarget = () => {
       if (document.fullscreenElement === wrap) return wrap
+      // 竖屏堆叠：量 PPT 窗格本身，避免把字幕区高度算进画幅
+      if (window.matchMedia(`(max-width: ${CLASSROOM_STACK_MAX_WIDTH}px)`).matches) {
+        return (wrap.closest('.classroom-ppt-pane') as HTMLElement | null) ?? wrap
+      }
       return (wrap.closest('.classroom-stage') as HTMLElement | null) ?? wrap
     }
 
@@ -196,6 +207,8 @@ export const PptViewer = forwardRef<PptViewerHandle, Props>(function PptViewer(
     ro.observe(wrap)
     const stage = wrap.closest('.classroom-stage')
     if (stage) ro.observe(stage)
+    const pane = wrap.closest('.classroom-ppt-pane')
+    if (pane) ro.observe(pane)
 
     const onFullscreen = () => {
       window.requestAnimationFrame(() => {

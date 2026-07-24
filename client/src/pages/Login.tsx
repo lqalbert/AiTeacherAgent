@@ -35,11 +35,14 @@ export function LoginPage() {
           <div className="agent-console-avatar" aria-hidden>
             智
           </div>
-          <Title level={3} style={{ margin: '12px 0 24px' }}>
+          <Title level={3} style={{ margin: '12px 0 8px' }}>
             智课随行
           </Title>
+          <Typography.Paragraph type="secondary" className="login-tagline">
+            课中字幕 · 课后评课
+          </Typography.Paragraph>
         </div>
-        <Form layout="vertical" onFinish={onFinish} requiredMark={false}>
+        <Form layout="vertical" onFinish={onFinish} requiredMark={false} style={{ marginTop: 8 }}>
           <Form.Item
             name="username"
             label="账号"
@@ -62,6 +65,9 @@ export function LoginPage() {
           <Button type="primary" htmlType="submit" block size="large" loading={submitting}>
             登录
           </Button>
+          <Typography.Paragraph type="secondary" className="login-hint">
+            演示账号：admin1 / admin123（或 admin2 / admin123）
+          </Typography.Paragraph>
         </Form>
       </Card>
     </div>

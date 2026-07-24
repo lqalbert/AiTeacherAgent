@@ -22,12 +22,14 @@ import { useAsrSocket } from '../hooks/useAsrSocket'
 import { buildReplayData, useCourseReplay } from '../hooks/useCourseReplay'
 import { useLiveSubtitle } from '../hooks/useLiveSubtitle'
 import { useAudioCapture } from '../hooks/useAudioCapture'
+import { useMediaQuery } from '../hooks/useMediaQuery'
 import {
   loadSubtitleStyle,
   saveSubtitleStyle,
   type Session,
   type SubtitleStyle,
 } from '../types'
+import { CLASSROOM_STACK_MAX_WIDTH } from '../utils/pptViewport'
 
 const { Text } = Typography
 
@@ -45,6 +47,7 @@ export function ClassroomPage() {
   const [subtitleStyle, setSubtitleStyle] = useState<SubtitleStyle>(loadSubtitleStyle())
   const [recording, setRecording] = useState(false)
   const [asrStreaming, setAsrStreaming] = useState(false)
+  const isStacked = useMediaQuery(`(max-width: ${CLASSROOM_STACK_MAX_WIDTH}px)`)
   const { lines: subtitleLines, onLive, flush: flushSubtitles, reset: resetSubtitles } =
     useLiveSubtitle()
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -298,67 +301,131 @@ export function ClassroomPage() {
     roundHasAnalysis(roundNumber) ? '查看报告' : '生成报告'
 
   return (
-    <div className="classroom-page">
+    <div className={['classroom-page', isStacked ? 'is-stacked' : ''].filter(Boolean).join(' ')}>
       <header className="classroom-toolbar">
-        <Space>
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/courses')}>
-            返回课程
+        <div className="classroom-toolbar-left">
+          <Button
+            type="text"
+            className="classroom-back-btn"
+            icon={<ArrowLeftOutlined />}
+            aria-label="返回课程"
+            onClick={() => navigate('/courses')}
+          >
+            {!isStacked && '返回课程'}
           </Button>
-          <Text strong>{session?.title || '加载中…'}</Text>
-          {statusTag()}
-          {!isReview && liveStatusTag()}
-          {micActive && !isReview && <Badge status="processing" text="麦克风" />}
-        </Space>
-        <Space wrap>
-          <Button icon={<LeftOutlined />} onClick={() => { pauseReplay(); pptRef.current?.prev() }}>
-            上一页
+          <div className="classroom-toolbar-meta">
+            <Text strong className="classroom-toolbar-title">
+              {session?.title || '加载中…'}
+            </Text>
+            <div className="classroom-toolbar-tags">
+              {statusTag()}
+              {!isReview && liveStatusTag()}
+              {micActive && !isReview && <Badge status="processing" text="麦克风" />}
+            </div>
+          </div>
+          <Text className="classroom-page-chip" type="secondary">
+            {slideIndex + 1}/{slideCount || '–'}
+          </Text>
+        </div>
+        <div className="classroom-toolbar-actions">
+          <Button
+            className="classroom-nav-btn"
+            size={isStacked ? 'large' : 'middle'}
+            icon={<LeftOutlined />}
+            aria-label="上一页"
+            onClick={() => {
+              pauseReplay()
+              pptRef.current?.prev()
+            }}
+          >
+            {!isStacked && '上一页'}
           </Button>
-          <Button icon={<RightOutlined />} onClick={() => { pauseReplay(); pptRef.current?.next() }}>
-            下一页
+          <Button
+            className="classroom-nav-btn"
+            size={isStacked ? 'large' : 'middle'}
+            icon={<RightOutlined />}
+            aria-label="下一页"
+            onClick={() => {
+              pauseReplay()
+              pptRef.current?.next()
+            }}
+          >
+            {!isStacked && '下一页'}
           </Button>
-          <Button icon={<FullscreenOutlined />} onClick={() => pptRef.current?.enterFullscreen()}>
-            全屏
+          <Button
+            className="classroom-nav-btn"
+            size={isStacked ? 'large' : 'middle'}
+            icon={<FullscreenOutlined />}
+            aria-label="全屏"
+            onClick={() => pptRef.current?.enterFullscreen()}
+          >
+            {!isStacked && '全屏'}
           </Button>
           {isReview ? (
             <Button
+              className="classroom-primary-action"
+              size={isStacked ? 'large' : 'middle'}
               icon={<FileTextOutlined />}
               onClick={() => navigate(`/report/${sessionId}?round=${displayRound}`)}
             >
-              {reportButtonLabel(displayRound)}
+              {isStacked ? '报告' : reportButtonLabel(displayRound)}
             </Button>
           ) : (
             <>
               {(session?.ended_round_count ?? 0) > 0 && (
                 <Button
+                  className="classroom-secondary-action"
+                  size={isStacked ? 'large' : 'middle'}
                   icon={<FileTextOutlined />}
                   onClick={() =>
                     navigate(`/report/${sessionId}?round=${session?.ended_round_count ?? 1}`)
                   }
                 >
-                  {reportButtonLabel(session?.ended_round_count ?? 1)}
+                  {isStacked ? '报告' : reportButtonLabel(session?.ended_round_count ?? 1)}
                 </Button>
               )}
               <Button
+                className="classroom-listen-btn"
+                size={isStacked ? 'large' : 'middle'}
                 type={recording ? 'default' : 'primary'}
                 icon={recording ? <AudioMutedOutlined /> : <AudioOutlined />}
                 onClick={toggleRecording}
               >
-                {recording ? '暂停听课' : '开始听课'}
+                {recording ? (isStacked ? '暂停' : '暂停听课') : isStacked ? '听课' : '开始听课'}
               </Button>
-              <Button icon={<SettingOutlined />} onClick={() => setSettingsOpen(true)}>
-                字幕
+              <Button
+                className="classroom-nav-btn"
+                size={isStacked ? 'large' : 'middle'}
+                icon={<SettingOutlined />}
+                aria-label="字幕"
+                onClick={() => setSettingsOpen(true)}
+              >
+                {!isStacked && '字幕'}
               </Button>
-              <Button danger icon={<StopOutlined />} loading={ending} onClick={handleEndClass}>
-                结束并生成报告
+              <Button
+                className="classroom-end-btn"
+                size={isStacked ? 'large' : 'middle'}
+                danger
+                icon={<StopOutlined />}
+                loading={ending}
+                onClick={handleEndClass}
+              >
+                {isStacked ? '结束' : '结束并生成报告'}
               </Button>
             </>
           )}
           {isReview && (
-            <Button icon={<SettingOutlined />} onClick={() => setSettingsOpen(true)}>
-              字幕
+            <Button
+              className="classroom-nav-btn"
+              size={isStacked ? 'large' : 'middle'}
+              icon={<SettingOutlined />}
+              aria-label="字幕"
+              onClick={() => setSettingsOpen(true)}
+            >
+              {!isStacked && '字幕'}
             </Button>
           )}
-        </Space>
+        </div>
       </header>
 
       {!isReview && (asrError || micError) && (
@@ -371,7 +438,13 @@ export function ClassroomPage() {
       <main className="classroom-stage classroom-split">
         <div
           className="classroom-ppt-pane"
-          style={pptLayout ? { width: pptLayout.width, flex: '0 0 auto' } : { flex: '1 1 auto' }}
+          style={
+            isStacked
+              ? { width: '100%', flex: '1 1 auto' }
+              : pptLayout
+                ? { width: pptLayout.width, flex: '0 0 auto' }
+                : { flex: '1 1 auto' }
+          }
         >
           {sessionLoading ? (
             <div className="ppt-overlay-msg">加载课程…</div>
@@ -428,9 +501,11 @@ export function ClassroomPage() {
       )}
 
       <footer className="classroom-footer">
-        <Text type="secondary">
-          第 {slideIndex + 1}/{slideCount || '?'} 页 · ← → 翻页 · F 全屏
-          {isReview ? ' · 空格 播放/暂停' : ''}
+        <Text type="secondary" className="classroom-footer-hint">
+          第 {slideIndex + 1}/{slideCount || '?'} 页
+          {isStacked
+            ? ' · 左右滑动翻页'
+            : ` · ← → 翻页 · F 全屏${isReview ? ' · 空格 播放/暂停' : ''}`}
         </Text>
       </footer>
 
@@ -438,7 +513,9 @@ export function ClassroomPage() {
         title="字幕样式"
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
-        width={320}
+        width={isStacked ? '100%' : 320}
+        placement={isStacked ? 'bottom' : 'right'}
+        height={isStacked ? '70%' : undefined}
       >
         <SubtitleSettings value={subtitleStyle} onChange={handleSubtitleStyleChange} />
       </Drawer>

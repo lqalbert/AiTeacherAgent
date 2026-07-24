@@ -9,6 +9,16 @@ export const SLIDE_DISPLAY_ASPECT = 16 / 9
 /** 右侧字幕栏最小宽度（与 CSS 保持一致） */
 export const SUBTITLE_PANEL_MIN_WIDTH = 240
 
+/** 课堂分栏改为上下堆叠的断点（与 App.css 媒体查询一致） */
+export const CLASSROOM_STACK_MAX_WIDTH = 768
+
+export function isClassroomStackedLayout(viewportWidth?: number): boolean {
+  const w =
+    viewportWidth ??
+    (typeof window !== 'undefined' ? window.innerWidth : CLASSROOM_STACK_MAX_WIDTH + 1)
+  return w <= CLASSROOM_STACK_MAX_WIDTH
+}
+
 /** 在容器内按指定宽高比 fit-contain */
 export function fitSlideViewport(
   containerWidth: number,
@@ -42,7 +52,10 @@ export function computeSlideLayoutForSplitView(
     return null
   }
 
-  const availableWidth = Math.max(320, stageWidth - subtitleMinWidth)
+  const rawWidth = stageWidth - subtitleMinWidth
+  // 桌面分栏预留字幕后仍给 PPT 一个下限；竖屏堆叠（subtitleMinWidth=0）则用真实宽度
+  const availableWidth =
+    subtitleMinWidth > 0 ? Math.max(320, rawWidth) : Math.max(1, rawWidth)
   const availableHeight = stageHeight
 
   // 外框始终 16:9，随可用区域等比缩放
