@@ -60,10 +60,18 @@ export function CoursesPage() {
 
   useEffect(() => {
     if (searchParams.get('new') === '1') {
+      form.resetFields()
+      setPptFile(null)
       setModalOpen(true)
       setSearchParams({}, { replace: true })
     }
-  }, [searchParams, setSearchParams])
+  }, [searchParams, setSearchParams, form])
+
+  const openCreateModal = () => {
+    form.resetFields()
+    setPptFile(null)
+    setModalOpen(true)
+  }
 
   const handleCreate = async () => {
     try {
@@ -203,7 +211,7 @@ export function CoursesPage() {
           >
             智能体工作台
           </Button>
-          <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setModalOpen(true)}>
+          <Button type="primary" icon={<PlusOutlined />} size="large" onClick={openCreateModal}>
             新建课程
           </Button>
           <Button size="large" onClick={() => logout().then(() => navigate('/login'))}>
@@ -305,7 +313,7 @@ export function CoursesPage() {
             label="课程标题"
             rules={[{ required: true, message: '请输入课程标题' }]}
           >
-            <Input placeholder="例如：门童迎送服务 · 护顶与七步程序" />
+            <Input placeholder="请输入课程标题" autoComplete="off" />
           </Form.Item>
           <Form.Item
             label="上课课件（.pptx）"

@@ -23,7 +23,7 @@ const LIGHT_SPEAKER_COLORS = [
 export function SubtitleLyricsPanel({
   lines,
   style,
-  emptyHint = '讲完一句后，完整字幕将显示在这里',
+  emptyHint = '说完一整句后，字幕将换行显示在这里',
   title = '课堂字幕',
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)

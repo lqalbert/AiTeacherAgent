@@ -36,6 +36,8 @@ type Props = {
   onUserNavigate?: () => void
   /** 渲染在 PPT 容器内，全屏时一并显示（如字幕浮层） */
   overlay?: ReactNode
+  /** 回放模式：翻页跳过页内动画步进，避免「卡住」连点 */
+  reviewMode?: boolean
 }
 
 const SWIPE_MIN_PX = 48
@@ -52,7 +54,7 @@ function normalizeIndex(index: number): number {
 }
 
 export const PptViewer = forwardRef<PptViewerHandle, Props>(function PptViewer(
-  { src, onSlideChange, onLayoutChange, onUserNavigate, overlay },
+  { src, onSlideChange, onLayoutChange, onUserNavigate, overlay, reviewMode = false },
   ref,
 ) {
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -215,9 +217,12 @@ export const PptViewer = forwardRef<PptViewerHandle, Props>(function PptViewer(
   }, [status, fontStatus, presentation, notifySlide])
 
   const handleNext = useCallback(async () => {
-    if (!presentation || transitioningRef.current || isTransitioning) return
+    if (!presentation) return
+    // 回放模式不受页过渡锁影响；授课模式仍等待过渡结束
+    if (!reviewMode && (transitioningRef.current || isTransitioning)) return
 
-    if (!isComplete && totalSteps > 0) {
+    // 回放模式直接翻页，不逐步播动画（否则会感觉卡住）
+    if (!reviewMode && !isComplete && totalSteps > 0) {
       advance()
       return
     }
@@ -228,8 +233,14 @@ export const PptViewer = forwardRef<PptViewerHandle, Props>(function PptViewer(
     const outSlide = presentation.slides[outIdx]
     const nextIdx = outIdx + 1
 
-    setPrevSlideIndex(outIdx)
+    transitioningRef.current = false
+    setPrevSlideIndex(reviewMode ? -1 : outIdx)
     notifySlide(nextIdx, presentation.slides.length)
+
+    if (reviewMode) {
+      setPrevSlideIndex(-1)
+      return
+    }
 
     transitioningRef.current = true
     try {
@@ -238,10 +249,23 @@ export const PptViewer = forwardRef<PptViewerHandle, Props>(function PptViewer(
       setPrevSlideIndex(-1)
       transitioningRef.current = false
     }
-  }, [presentation, isComplete, totalSteps, advance, isTransitioning, startTransition, notifySlide])
+  }, [
+    presentation,
+    isComplete,
+    totalSteps,
+    advance,
+    isTransitioning,
+    startTransition,
+    notifySlide,
+    reviewMode,
+  ])
 
   const handlePrev = useCallback(() => {
     if (!presentation || slideIndexRef.current <= 0) return
+    if (transitioningRef.current) {
+      transitioningRef.current = false
+      setPrevSlideIndex(-1)
+    }
     notifySlide(slideIndexRef.current - 1, presentation.slides.length)
   }, [presentation, notifySlide])
 
@@ -249,7 +273,10 @@ export const PptViewer = forwardRef<PptViewerHandle, Props>(function PptViewer(
     (index: number) => {
       if (!presentation) return
       const clamped = Math.max(0, Math.min(index, presentation.slides.length - 1))
+      // 打断进行中的页过渡，避免回放 goTo 被卡住
+      transitioningRef.current = false
       setPrevSlideIndex(-1)
+      if (clamped === slideIndexRef.current) return
       notifySlide(clamped, presentation.slides.length)
     },
     [presentation, notifySlide],
@@ -381,7 +408,8 @@ export const PptViewer = forwardRef<PptViewerHandle, Props>(function PptViewer(
                   slideSize={presentation.slideSize}
                   scale={scale}
                   fontSubstitutes={fontSubstitutes}
-                  hiddenShapeIds={currentHiddenIds}
+                  // 回放跳过页内动画步进，需直接展示全部形状，否则入场动画元素会一直隐藏
+                  hiddenShapeIds={reviewMode ? undefined : currentHiddenIds}
                   className="ppt-slide-view"
                 />
               </div>

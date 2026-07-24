@@ -83,9 +83,10 @@ export function ClassroomPage() {
                 ? (s.ended_round_count ?? s.current_round ?? 1)
                 : (s.current_round ?? s.round_count ?? 1))
             const report = await getReport(sessionId, round)
-            setReplayData(buildReplayData(report.slideEvents, report.transcript))
-          } catch {
+            setReplayData(buildReplayData(report.slideEvents ?? [], report.transcript ?? []))
+          } catch (err) {
             setReplayData(buildReplayData([], []))
+            message.warning(err instanceof Error ? err.message : '回放字幕加载失败')
           }
         }
       })
@@ -379,6 +380,7 @@ export function ClassroomPage() {
               key={session.ppt_path}
               ref={pptRef}
               src={session.ppt_path}
+              reviewMode={isReview}
               onSlideChange={handleSlideChange}
               onLayoutChange={handlePptLayoutChange}
               onUserNavigate={isReview ? pauseReplay : undefined}
@@ -400,10 +402,14 @@ export function ClassroomPage() {
           title={isReview ? '回放字幕' : '实时字幕'}
           emptyHint={
             isReview
-              ? '该节暂无转写记录'
+              ? replay.hasTranscript
+                ? replay.playing || replay.currentMs > 0
+                  ? '当前进度暂无字幕'
+                  : '点击播放，字幕将随回放显示'
+                : '该节暂无转写记录'
               : recording
-                ? '正在听课，讲完一句后将完整显示字幕'
-                : '点击「开始听课」，讲完一句后显示完整字幕'
+                ? '正在听课，说完一整句后换行显示字幕'
+                : '点击「开始听课」，说完一整句后换行显示字幕'
           }
         />
       </main>

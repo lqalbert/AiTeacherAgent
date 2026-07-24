@@ -1,7 +1,10 @@
 import { useCallback, useRef, useState } from 'react'
 import {
   cleanSubtitleDisplay,
+  extractCompleteSentences,
+  formatLiveSubtitleSentence,
   isProgressiveUtterance,
+  looksLikeCompleteSentence,
   pickProgressiveText,
 } from '../utils/liveSubtitle'
 
@@ -17,14 +20,16 @@ export type LiveSubtitleLine = {
 }
 
 const MAX_HISTORY = 500
-/** 停顿后视为一句结束并上屏 */
-const SILENCE_COMMIT_MS = 650
-/** final 后短防抖，合并递进结果 */
-const REVEAL_DEBOUNCE_MS = 280
-/** 草稿最长等待：持续说话时也定期上屏，避免一直空白 */
-const MAX_HOLD_MS = 3500
+/** 停顿后：有完整句则上屏；无标点时也视为一句结束 */
+const SILENCE_COMMIT_MS = 1100
+/** final 后稍等，便于同一句递进合并 */
+const STABLE_DEBOUNCE_MS = 380
+/** 持续说话时：只抽出已有句号的完整句上屏，未完部分继续攒 */
+const HOLD_EXTRACT_MS = 4500
 /** 上屏后短时间递进修订同一行 */
-const REVISE_WINDOW_MS = 2800
+const REVISE_WINDOW_MS = 5500
+/** 无标点时，停顿上屏的最短字数 */
+const MIN_PAUSE_SENTENCE_CHARS = 8
 
 type DraftState = {
   text: string
@@ -35,8 +40,8 @@ type DraftState = {
 }
 
 /**
- * 直播式字幕：识别中先缓存，一句结束后一次性上屏。
- * 同时保证：final 必上屏、停顿上屏、超时强制上屏，避免中途长时间无字幕。
+ * 直播式字幕：攒完整句后上屏；展示去掉标点，一句一行。
+ * 识别中不把半句话打到大屏；停顿或句末后再呈现。
  */
 export function useLiveSubtitle() {
   const [lines, setLines] = useState<LiveSubtitleLine[]>([])
@@ -81,17 +86,10 @@ export function useLiveSubtitle() {
     }
   }
 
-  const looksLikeSentenceEnd = (text: string) =>
-    /[。！？!?；…]$/.test(text) || (text.length >= 10 && /[。！？!?；…]/.test(text))
-
-  const commitReveal = useCallback(
-    (speaker: number, forceText?: string) => {
-      const draft = getDraft(speaker)
-      const cleaned = cleanSubtitleDisplay(forceText ?? draft.text)
-      clearDraftTimers(draft)
-      draft.text = ''
-      draft.updatedAt = 0
-
+  const appendSentenceLine = useCallback(
+    (speaker: number, sentence: string) => {
+      // 上屏不展示标点：一句一行即可
+      const cleaned = cleanSubtitleDisplay(sentence)
       if (!cleaned) return
 
       const prev = linesRef.current
@@ -102,18 +100,30 @@ export function useLiveSubtitle() {
       const recentlyRevealed =
         lastLine && now - (lastRevealAtRef.current[speaker] || 0) < REVISE_WINDOW_MS
 
-      if (lastLine && recentlyRevealed && isProgressiveUtterance(lastLine.text, cleaned)) {
-        const merged = pickProgressiveText(lastLine.text, cleaned)
-        if (merged === lastLine.text) return
-        const revised = prev.map((l) => {
-          if (l.id === lastId) {
-            return { ...l, text: merged, status: 'current' as const, interim: false }
-          }
-          if (l.status === 'current') return { ...l, status: 'past' as const }
-          return l
-        })
-        lastRevealAtRef.current[speaker] = now
-        publish(revised)
+      const candidates: { line: (typeof prev)[number]; idx: number }[] = []
+      if (lastLine && lastIdx >= 0) candidates.push({ line: lastLine, idx: lastIdx })
+      if (recentlyRevealed) {
+        for (let i = lastIdx - 1; i >= 0 && candidates.length < 3; i -= 1) {
+          if (prev[i].speaker === speaker) candidates.push({ line: prev[i], idx: i })
+        }
+      }
+
+      for (const { line, idx } of candidates) {
+        if (!isProgressiveUtterance(line.text, cleaned)) continue
+        const merged = pickProgressiveText(line.text, cleaned)
+        if (idx === lastIdx) {
+          if (merged === line.text) return
+          const revised = prev.map((l) => {
+            if (l.id === line.id) {
+              return { ...l, text: merged, status: 'current' as const, interim: false }
+            }
+            if (l.status === 'current') return { ...l, status: 'past' as const }
+            return l
+          })
+          lastRevealAtRef.current[speaker] = now
+          publish(revised)
+          return
+        }
         return
       }
 
@@ -138,29 +148,42 @@ export function useLiveSubtitle() {
     [publish],
   )
 
-  const scheduleReveal = useCallback(
-    (speaker: number, delayMs: number) => {
+  /**
+   * 从草稿抽出完整句上屏。
+   * - commitRest: 停顿/结束时，把剩余无标点片段也作为一句上屏
+   * - onlyPunctuated: 持续说话超时，只上屏带句末标点的句子
+   */
+  const revealFromDraft = useCallback(
+    (speaker: number, opts: { commitRest?: boolean; onlyPunctuated?: boolean } = {}) => {
       const draft = getDraft(speaker)
-      if (!draft.text) return
-      if (draft.revealTimer) clearTimeout(draft.revealTimer)
-      draft.revealTimer = setTimeout(() => {
-        draft.revealTimer = null
-        commitReveal(speaker)
-      }, delayMs)
-    },
-    [commitReveal],
-  )
+      const { commitRest = false, onlyPunctuated = false } = opts
+      if (!draft.text) {
+        clearDraftTimers(draft)
+        return
+      }
 
-  const armHoldTimer = useCallback(
-    (speaker: number) => {
-      const draft = getDraft(speaker)
-      if (draft.holdTimer) return
-      draft.holdTimer = setTimeout(() => {
-        draft.holdTimer = null
-        if (draft.text) scheduleReveal(speaker, 0)
-      }, MAX_HOLD_MS)
+      const { sentences, rest } = extractCompleteSentences(draft.text)
+      for (const s of sentences) appendSentenceLine(speaker, s)
+
+      if (onlyPunctuated) {
+        draft.text = rest
+        if (!rest) clearDraftTimers(draft)
+        return
+      }
+
+      if (commitRest && rest) {
+        if (rest.length >= MIN_PAUSE_SENTENCE_CHARS || looksLikeCompleteSentence(rest) || rest.length >= 4) {
+          appendSentenceLine(speaker, rest)
+        }
+        draft.text = ''
+        clearDraftTimers(draft)
+        return
+      }
+
+      draft.text = rest
+      if (!rest) clearDraftTimers(draft)
     },
-    [scheduleReveal],
+    [appendSentenceLine],
   )
 
   const scheduleSilenceCommit = useCallback(
@@ -170,15 +193,30 @@ export function useLiveSubtitle() {
       draft.silenceTimer = setTimeout(() => {
         draft.silenceTimer = null
         if (!draft.text) return
-        scheduleReveal(speaker, 0)
+        revealFromDraft(speaker, { commitRest: true })
       }, SILENCE_COMMIT_MS)
     },
-    [scheduleReveal],
+    [revealFromDraft],
+  )
+
+  const armHoldTimer = useCallback(
+    (speaker: number) => {
+      const draft = getDraft(speaker)
+      if (draft.holdTimer) return
+      draft.holdTimer = setTimeout(() => {
+        draft.holdTimer = null
+        if (!draft.text) return
+        // 只抽出已有句号的完整句，半句继续等
+        revealFromDraft(speaker, { onlyPunctuated: true })
+        if (draft.text) armHoldTimer(speaker)
+      }, HOLD_EXTRACT_MS)
+    },
+    [revealFromDraft],
   )
 
   const onLive = useCallback(
     (text: string, stable: boolean, speaker = 0) => {
-      const cleaned = cleanSubtitleDisplay(text)
+      const cleaned = formatLiveSubtitleSentence(text)
       if (!cleaned) return
       const spk = speaker > 0 ? speaker : 0
       const draft = getDraft(spk)
@@ -188,10 +226,18 @@ export function useLiveSubtitle() {
       } else if (isProgressiveUtterance(draft.text, cleaned)) {
         draft.text = pickProgressiveText(draft.text, cleaned)
       } else if (draft.text !== cleaned) {
-        // 新句：先上屏旧草稿
-        commitReveal(spk, draft.text)
+        // 新句：先把旧草稿按完整句收束上屏，再开始攒新句
+        revealFromDraft(spk, { commitRest: true })
         draft.text = cleaned
       }
+
+      // 草稿里已有句末标点的完整句，立刻抽出去上屏
+      const { sentences, rest } = extractCompleteSentences(draft.text)
+      if (sentences.length > 0) {
+        for (const s of sentences) appendSentenceLine(spk, s)
+        draft.text = rest
+      }
+
       draft.updatedAt = Date.now()
       armHoldTimer(spk)
 
@@ -204,20 +250,25 @@ export function useLiveSubtitle() {
         clearTimeout(draft.silenceTimer)
         draft.silenceTimer = null
       }
-      const delay = looksLikeSentenceEnd(draft.text) ? 120 : REVEAL_DEBOUNCE_MS
-      scheduleReveal(spk, delay)
+      if (draft.revealTimer) clearTimeout(draft.revealTimer)
+      draft.revealTimer = setTimeout(() => {
+        draft.revealTimer = null
+        // final：抽出完整句；剩余等停顿再收
+        revealFromDraft(spk, { commitRest: false })
+        if (draft.text) scheduleSilenceCommit(spk)
+      }, STABLE_DEBOUNCE_MS)
     },
-    [armHoldTimer, commitReveal, scheduleReveal, scheduleSilenceCommit],
+    [appendSentenceLine, armHoldTimer, revealFromDraft, scheduleSilenceCommit],
   )
 
   const flush = useCallback(() => {
     for (const key of Object.keys(draftBySpeakerRef.current)) {
       const spk = Number(key)
       const draft = draftBySpeakerRef.current[spk]
-      if (draft?.text) commitReveal(spk)
+      if (draft?.text) revealFromDraft(spk, { commitRest: true })
       else if (draft) clearDraftTimers(draft)
     }
-  }, [commitReveal])
+  }, [revealFromDraft])
 
   const reset = useCallback(() => {
     for (const draft of Object.values(draftBySpeakerRef.current)) {

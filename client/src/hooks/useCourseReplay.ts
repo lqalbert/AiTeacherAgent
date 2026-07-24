@@ -2,7 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PptViewerHandle } from '../components/PptViewer'
 import type { LiveSubtitleLine } from './useLiveSubtitle'
 import type { TranscriptSegment } from '../types'
-import { splitDisplaySentences, stripSubtitlePunctuation } from '../utils/liveSubtitle'
+import {
+  extractCompleteSentences,
+  formatLiveSubtitleSentence,
+  isProgressiveUtterance,
+  pickProgressiveOriginal,
+  stripSubtitlePunctuation,
+} from '../utils/liveSubtitle'
 
 export type SlideEvent = {
   slide_index: number
@@ -15,6 +21,7 @@ export type ReplayCue = {
   startMs: number
   endMs: number
   speaker: number
+  slideIndex?: number
 }
 
 export type ReplayData = {
@@ -24,10 +31,11 @@ export type ReplayData = {
   durationMs: number
 }
 
-const MERGE_GAP_MS = 4000
-const MIN_DISPLAY_MS = 3200
-const MS_PER_CHAR = 260
-const MAX_MERGE_CHARS = 100
+/** 同一页内碎句合并的最大间隔 */
+const MERGE_GAP_MS = 2500
+const MIN_CUE_MS = 1200
+const MAX_CUE_MS = 8000
+const MS_PER_CHAR = 160
 
 export function buildReplayData(
   slideEvents: SlideEvent[],
@@ -36,30 +44,14 @@ export function buildReplayData(
   const dedupedSlides = dedupeSlideEvents(slideEvents)
   const aligned = alignReplayTimestamps(dedupedSlides, transcript)
   const sortedSlides = [...aligned.slideEvents].sort((a, b) => a.event_at_ms - b.event_at_ms)
+  const cues = buildReplayCues(aligned.transcript, sortedSlides)
+
   const slideEndMs = sortedSlides.length
     ? Math.max(...sortedSlides.map((e) => e.event_at_ms))
     : 0
-
-  const cues = buildReplayCues(aligned.transcript, slideEndMs)
-  const speechEndMs = cues.length ? cues[cues.length - 1].endMs : 0
-  let durationMs = Math.max(slideEndMs, speechEndMs, 1000)
-
-  // 字幕整体早于 PPT 结束时，按比例拉长字幕时间轴，避免相对 PPT 过快
-  if (slideEndMs > 0 && speechEndMs > 0 && slideEndMs > speechEndMs * 1.08) {
-    const scale = slideEndMs / speechEndMs
-    const stretched = cues.map((c) => ({
-      ...c,
-      startMs: c.startMs * scale,
-      endMs: c.endMs * scale,
-    }))
-    durationMs = Math.max(slideEndMs, stretched[stretched.length - 1]?.endMs ?? 0, 1000)
-    return {
-      slideEvents: sortedSlides,
-      transcript: aligned.transcript,
-      cues: stretched,
-      durationMs,
-    }
-  }
+  const speechEndMs = cues.length ? Math.max(...cues.map((c) => c.endMs)) : 0
+  // 总时长取翻页/字幕较晚者；不再缩放字幕轴（缩放会破坏与翻页的对齐）
+  const durationMs = Math.max(slideEndMs, speechEndMs, 1000) + 800
 
   return {
     slideEvents: sortedSlides,
@@ -100,9 +92,10 @@ export function alignReplayTimestamps(
   const slideMin = Math.min(...slideEvents.map((e) => e.event_at_ms))
   const slideMax = Math.max(...slideEvents.map((e) => e.event_at_ms))
   const transMin = Math.min(...finals.map((s) => s.start_ms ?? 0))
+  const transMax = Math.max(...finals.map((s) => s.start_ms ?? 0))
 
-  // 翻页时间轴已结束，字幕仍在很后面 → 说明录制时用了不同时钟（页面加载 vs 课次开始）
-  if (transMin - slideMax > 120_000) {
+  // 字幕整体远晚于翻页结束 → 减去偏移，对齐到同一原点
+  if (transMin - slideMax > 60_000) {
     const offset = transMin - slideMin
     return {
       slideEvents,
@@ -114,82 +107,129 @@ export function alignReplayTimestamps(
     }
   }
 
+  // 翻页整体远晚于字幕 → 平移翻页时间轴
+  if (slideMin - transMax > 60_000) {
+    const offset = slideMin - Math.min(transMin, 0)
+    return {
+      slideEvents: slideEvents.map((e) => ({
+        ...e,
+        event_at_ms: Math.max(0, e.event_at_ms - offset),
+      })),
+      transcript,
+    }
+  }
+
   return { slideEvents, transcript }
 }
 
-/** 将 ASR 碎句合并为可读的回放字幕轴（与直播字幕类似的句长与停留） */
+function preferredSlideIndex(seg: TranscriptSegment, slideEvents: SlideEvent[]): number {
+  if (typeof seg.slide_index === 'number' && seg.slide_index >= 0) return seg.slide_index
+  return getSlideIndexAtTime(slideEvents, seg.start_ms ?? 0)
+}
+
+/**
+ * 按真实转写时间轴生成回放字幕。
+ * 关键：cue.startMs 必须贴近 ASR start_ms，禁止被前一句「最短展示时长」往后推，否则会与翻页错位。
+ */
 export function buildReplayCues(
   segments: TranscriptSegment[],
-  slideEndMs = 0,
+  slideEvents: SlideEvent[] = [],
 ): ReplayCue[] {
   const finals = segments
-    .filter((s) => s.is_final && s.text.trim())
+    .filter((s) => {
+      const finalFlag = s.is_final
+      const isFinal = finalFlag === true || finalFlag === 1 || finalFlag == null
+      return isFinal && String(s.text || '').trim()
+    })
     .sort((a, b) => (a.start_ms ?? 0) - (b.start_ms ?? 0))
 
   if (finals.length === 0) return []
 
-  const groups: TranscriptSegment[][] = []
-  let group: TranscriptSegment[] = [finals[0]]
+  // 先去重合并递进碎句，保留最早时间戳与页码
+  const mergedSegs: Array<{
+    text: string
+    startMs: number
+    endMs: number
+    slideIndex: number
+  }> = []
 
-  for (let i = 1; i < finals.length; i++) {
-    const prev = finals[i - 1]
-    const cur = finals[i]
-    const gap = (cur.start_ms ?? 0) - (prev.start_ms ?? 0)
-    const mergedLen = group.reduce((n, s) => n + s.text.length, 0) + cur.text.length
+  for (const seg of finals) {
+    const text = formatLiveSubtitleSentence(seg.text)
+    if (!text) continue
+    const startMs = Math.max(0, seg.start_ms ?? 0)
+    const endMs = Math.max(startMs, seg.end_ms ?? startMs)
+    const slideIndex = preferredSlideIndex(seg, slideEvents)
+    const prev = mergedSegs[mergedSegs.length - 1]
 
-    if (gap <= MERGE_GAP_MS && mergedLen <= MAX_MERGE_CHARS) {
-      group.push(cur)
-    } else {
-      groups.push(group)
-      group = [cur]
+    if (
+      prev &&
+      startMs - prev.startMs <= MERGE_GAP_MS &&
+      (isProgressiveUtterance(prev.text, text) || prev.slideIndex === slideIndex)
+    ) {
+      if (isProgressiveUtterance(prev.text, text)) {
+        prev.text = pickProgressiveOriginal(prev.text, text)
+      } else {
+        // 同页相邻碎句：拼成更长文本，稍后再按句切开
+        prev.text = `${prev.text}${/[。！？!?…]$/.test(prev.text) ? '' : ''}${text}`
+      }
+      prev.endMs = Math.max(prev.endMs, endMs)
+      continue
     }
+
+    mergedSegs.push({ text, startMs, endMs, slideIndex })
   }
-  groups.push(group)
 
-  type DraftCue = { text: string; anchorMs: number }
-  const drafts: DraftCue[] = []
+  type Draft = { text: string; startMs: number; slideIndex: number }
+  const drafts: Draft[] = []
 
-  for (let gi = 0; gi < groups.length; gi++) {
-    const g = groups[gi]
-    const nextGroup = groups[gi + 1]
-    const groupStart = g[0].start_ms ?? 0
-    const groupEndHint = nextGroup
-      ? (nextGroup[0].start_ms ?? groupStart)
-      : (g[g.length - 1].start_ms ?? groupStart) + MERGE_GAP_MS
-    const groupSpan = Math.max(groupEndHint - groupStart, MIN_DISPLAY_MS)
+  for (const seg of mergedSegs) {
+    const { sentences, rest } = extractCompleteSentences(seg.text)
+    const parts = sentences.length > 0 ? [...sentences, ...(rest ? [rest] : [])] : [seg.text]
+    const displayParts = parts
+      .map((p) => stripSubtitlePunctuation(p))
+      .filter(Boolean)
+    if (displayParts.length === 0) continue
 
-    const merged = stripSubtitlePunctuation(g.map((s) => s.text).join(''))
-    const sentences = splitDisplaySentences(merged)
-    if (sentences.length === 0) continue
-
-    sentences.forEach((text, idx) => {
-      const anchorMs =
-        sentences.length === 1
-          ? groupStart
-          : groupStart + (groupSpan * idx) / sentences.length
-      drafts.push({ text, anchorMs })
+    displayParts.forEach((text, idx) => {
+      const startMs =
+        displayParts.length === 1
+          ? seg.startMs
+          : seg.startMs +
+            Math.floor(((seg.endMs - seg.startMs) * idx) / Math.max(1, displayParts.length))
+      drafts.push({ text, startMs, slideIndex: seg.slideIndex })
     })
   }
 
-  if (drafts.length === 0) return []
+  // 再去重相邻展示句
+  const deduped: Draft[] = []
+  for (const d of drafts) {
+    const prev = deduped[deduped.length - 1]
+    if (prev && isProgressiveUtterance(prev.text, d.text)) {
+      prev.text = stripSubtitlePunctuation(pickProgressiveOriginal(prev.text, d.text))
+      continue
+    }
+    deduped.push({ ...d })
+  }
 
   const cues: ReplayCue[] = []
-  for (let i = 0; i < drafts.length; i++) {
-    const { text, anchorMs } = drafts[i]
-    const minDuration = Math.max(MIN_DISPLAY_MS, text.length * MS_PER_CHAR)
-    const startMs = i === 0 ? anchorMs : Math.max(anchorMs, cues[i - 1].endMs)
-    const nextAnchor = drafts[i + 1]?.anchorMs
+  for (let i = 0; i < deduped.length; i++) {
+    const cur = deduped[i]
+    const next = deduped[i + 1]
+    const ideal = Math.min(MAX_CUE_MS, Math.max(MIN_CUE_MS, cur.text.length * MS_PER_CHAR))
+    const startMs = cur.startMs
+    // 展示到下一句开始，或 ideal 时长；绝不把下一句的 start 往后挤
     const endMs =
-      nextAnchor != null
-        ? Math.max(startMs + minDuration, nextAnchor)
-        : Math.max(startMs + minDuration, slideEndMs || startMs + minDuration)
+      next != null
+        ? Math.max(startMs + 400, Math.min(next.startMs, startMs + ideal))
+        : startMs + ideal
 
     cues.push({
       id: i + 1,
-      text,
+      text: cur.text,
       startMs,
-      endMs,
+      endMs: Math.max(endMs, startMs + 400),
       speaker: 0,
+      slideIndex: cur.slideIndex,
     })
   }
 
@@ -206,12 +246,27 @@ export function getSlideIndexAtTime(events: SlideEvent[], ms: number): number {
   return index
 }
 
+/**
+ * 回放时按翻页事件切页（老师当时的翻页时间轴）。
+ * 不用每条字幕的 slide_index 驱动翻页，避免页码抖动、频繁 goTo 卡死。
+ */
+export function getReplaySlideAtTime(
+  events: SlideEvent[],
+  _cues: ReplayCue[],
+  ms: number,
+): number {
+  return getSlideIndexAtTime(events, ms)
+}
+
 export function getLyricsAtTime(
   segments: TranscriptSegment[],
   ms: number,
 ): LiveSubtitleLine[] {
   return getLyricsAtTimeFromCues(buildReplayCues(segments), ms)
 }
+
+/** 回放字幕：只返回已出现的句子（最近若干条 + 当前），避免整表重绘卡顿 */
+const REPLAY_LYRICS_PAST_LIMIT = 40
 
 export function getLyricsAtTimeFromCues(cues: ReplayCue[], ms: number): LiveSubtitleLine[] {
   if (cues.length === 0) return []
@@ -222,12 +277,22 @@ export function getLyricsAtTimeFromCues(cues: ReplayCue[], ms: number): LiveSubt
     else break
   }
 
-  return cues.map((cue, i) => ({
-    id: cue.id,
-    text: cue.text,
-    speaker: cue.speaker,
-    status: (i < currentIdx ? 'past' : i === currentIdx ? 'current' : 'upcoming') as LiveSubtitleLine['status'],
-  }))
+  // 进度还在第一句之前：不显示「暂无」，留给 UI 提示点击播放
+  if (currentIdx < 0) return []
+
+  const from = Math.max(0, currentIdx - REPLAY_LYRICS_PAST_LIMIT + 1)
+  const slice = cues.slice(from, currentIdx + 1)
+  return slice.map((cue, i) => {
+    const absoluteIdx = from + i
+    return {
+      id: cue.id,
+      text: cue.text,
+      speaker: cue.speaker,
+      status: (absoluteIdx < currentIdx
+        ? 'past'
+        : 'current') as LiveSubtitleLine['status'],
+    }
+  })
 }
 
 /** @deprecated 使用 getLyricsAtTime */
@@ -259,10 +324,21 @@ export function useCourseReplay({ data, pptRef, enabled, pptReady }: Options) {
   const lastSlideRef = useRef(-1)
   const rafRef = useRef<number | null>(null)
   const lastTickRef = useRef<number | null>(null)
+  const playingRef = useRef(false)
+  const speedRef = useRef(1)
+  const currentMsRef = useRef(0)
+  const durationMsRef = useRef(0)
+  const lastUiFlushRef = useRef(0)
+
+  playingRef.current = playing
+  speedRef.current = speed
+  currentMsRef.current = currentMs
 
   const durationMs = data?.durationMs ?? 0
+  durationMsRef.current = durationMs
+
   const hasTimeline = Boolean(
-    data && (data.slideEvents.length > 0 || data.transcript.some((s) => s.is_final)),
+    data && (data.slideEvents.length > 0 || data.cues.length > 0 || data.transcript.length > 0),
   )
 
   const subtitleLines = useMemo(
@@ -270,9 +346,11 @@ export function useCourseReplay({ data, pptRef, enabled, pptReady }: Options) {
     [data, currentMs],
   )
 
+  // 翻页：同步 goTo。切勿在依赖 currentMs 的 effect 里用 setTimeout+cleanup，
+  // 否则下一帧 effect 清理会取消尚未执行的 goTo，表现为回放翻页卡住。
   useEffect(() => {
     if (!enabled || !data || !pptReady) return
-    const slide = getSlideIndexAtTime(data.slideEvents, currentMs)
+    const slide = getReplaySlideAtTime(data.slideEvents, data.cues, currentMs)
     if (slide === lastSlideRef.current) return
     lastSlideRef.current = slide
     pptRef.current?.goTo(slide)
@@ -286,56 +364,76 @@ export function useCourseReplay({ data, pptRef, enabled, pptReady }: Options) {
       return
     }
 
+    // 播放循环用 ref，避免每帧 setState 引发整页重绘卡顿；UI 约 10fps 刷新
+    const UI_FLUSH_MS = 100
+
     const tick = (now: number) => {
+      if (!playingRef.current) return
+
       if (lastTickRef.current == null) {
         lastTickRef.current = now
       } else {
-        const delta = (now - lastTickRef.current) * speed
+        const delta = (now - lastTickRef.current) * speedRef.current
         lastTickRef.current = now
-        setCurrentMs((prev) => {
-          const next = prev + delta
-          if (next >= durationMs) {
+        const next = Math.min(currentMsRef.current + delta, durationMsRef.current)
+        currentMsRef.current = next
+
+        const shouldFlush =
+          next >= durationMsRef.current ||
+          now - lastUiFlushRef.current >= UI_FLUSH_MS
+
+        if (shouldFlush) {
+          lastUiFlushRef.current = now
+          setCurrentMs(next)
+          if (next >= durationMsRef.current) {
             setPlaying(false)
-            return durationMs
+            playingRef.current = false
+            return
           }
-          return next
-        })
+        }
       }
       rafRef.current = requestAnimationFrame(tick)
     }
 
+    lastUiFlushRef.current = performance.now()
     rafRef.current = requestAnimationFrame(tick)
     return () => {
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
       rafRef.current = null
       lastTickRef.current = null
+      // 停播时把精确时间刷到 state，避免进度条落后
+      setCurrentMs(currentMsRef.current)
     }
-  }, [playing, speed, durationMs, enabled])
+  }, [playing, durationMs, enabled])
 
   const togglePlay = useCallback(() => {
     if (!hasTimeline) return
     setPlaying((p) => {
-      if (!p && currentMs >= durationMs) {
+      if (!p && currentMsRef.current >= durationMsRef.current) {
+        currentMsRef.current = 0
         setCurrentMs(0)
         lastSlideRef.current = -1
       }
+      playingRef.current = !p
       return !p
     })
-  }, [hasTimeline, currentMs, durationMs])
+  }, [hasTimeline])
 
-  const seek = useCallback(
-    (ms: number) => {
-      const clamped = Math.max(0, Math.min(ms, durationMs))
-      setPlaying(false)
-      lastSlideRef.current = -1
-      setCurrentMs(clamped)
-    },
-    [durationMs],
-  )
+  const seek = useCallback((ms: number) => {
+    const clamped = Math.max(0, Math.min(ms, durationMsRef.current))
+    setPlaying(false)
+    playingRef.current = false
+    lastSlideRef.current = -1
+    lastTickRef.current = null
+    currentMsRef.current = clamped
+    setCurrentMs(clamped)
+  }, [])
 
   const reset = useCallback(() => {
     setPlaying(false)
+    playingRef.current = false
     lastSlideRef.current = -1
+    currentMsRef.current = 0
     setCurrentMs(0)
   }, [])
 
@@ -345,11 +443,16 @@ export function useCourseReplay({ data, pptRef, enabled, pptReady }: Options) {
     durationMs,
     speed,
     hasTimeline,
+    hasTranscript: Boolean(data?.cues?.length),
+    cueCount: data?.cues?.length ?? 0,
     subtitleLines,
     setSpeed,
     togglePlay,
     seek,
     reset,
-    pause: () => setPlaying(false),
+    pause: () => {
+      playingRef.current = false
+      setPlaying(false)
+    },
   }
 }

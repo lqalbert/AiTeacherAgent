@@ -5,6 +5,7 @@ import {
   StepForwardOutlined,
 } from '@ant-design/icons'
 import { Button, Select, Slider, Space, Typography } from 'antd'
+import { useEffect, useState } from 'react'
 import { formatReplayTime } from '../hooks/useCourseReplay'
 
 const { Text } = Typography
@@ -40,6 +41,14 @@ export function ReplayControls({
   onSpeedChange,
 }: Props) {
   const stepMs = 5000
+  const [dragging, setDragging] = useState(false)
+  const [dragMs, setDragMs] = useState(currentMs)
+
+  useEffect(() => {
+    if (!dragging) setDragMs(currentMs)
+  }, [currentMs, dragging])
+
+  const sliderValue = dragging ? dragMs : currentMs
 
   return (
     <div className="replay-controls">
@@ -66,17 +75,24 @@ export function ReplayControls({
           onClick={() => onSeek(Math.min(durationMs, currentMs + stepMs))}
         />
         <Text className="replay-time">
-          {formatReplayTime(currentMs)} / {formatReplayTime(durationMs)}
+          {formatReplayTime(sliderValue)} / {formatReplayTime(durationMs)}
         </Text>
         <Slider
           className="replay-slider"
           min={0}
-          max={durationMs}
-          step={500}
-          value={currentMs}
+          max={Math.max(durationMs, 1)}
+          step={200}
+          value={sliderValue}
           disabled={!hasTimeline}
           tooltip={{ formatter: (v) => formatReplayTime(v ?? 0) }}
-          onChange={onSeek}
+          onChange={(v) => {
+            setDragging(true)
+            setDragMs(Number(v) || 0)
+          }}
+          onChangeComplete={(v) => {
+            setDragging(false)
+            onSeek(Number(v) || 0)
+          }}
         />
         <Select
           size="small"

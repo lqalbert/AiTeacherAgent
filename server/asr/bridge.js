@@ -14,7 +14,7 @@ import {
   parseRtasrLlmMessage,
 } from './rtasrLlmProxy.js'
 import { buildXfyunWsUrl, parseXfyunMessage } from './xfyunProxy.js'
-import { cleanSubtitleDisplay, stripSpeechFillers } from './subtitleText.js'
+import { formatLiveSubtitleSentence, stripSpeechFillers } from './subtitleText.js'
 
 const IAT_MAX_MS = 50_000
 /** 上游未就绪时缓存约 4 秒音频（40ms/帧） */
@@ -112,7 +112,7 @@ export function createAsrBridge({
     const text = stripSpeechFillers(rawParsed)
     if (!text) return
 
-    const display = cleanSubtitleDisplay(text)
+    const display = formatLiveSubtitleSentence(text)
     if (pushClient && display) {
       sendClient({
         type: 'live',
@@ -141,7 +141,7 @@ export function createAsrBridge({
           onPolishedText?.(segmentId, polishedStore)
         }
 
-        const polishedDisplay = cleanSubtitleDisplay(polishedText)
+        const polishedDisplay = formatLiveSubtitleSentence(polishedText)
         if (pushClient && polishedDisplay && polishedDisplay !== display) {
           sendClient({
             type: 'live',
@@ -197,7 +197,7 @@ export function createAsrBridge({
 
     if (parsed.type === 'result' && parsed.text) {
       if (!parsed.isFinal) {
-        const display = cleanSubtitleDisplay(parsed.text)
+        const display = formatLiveSubtitleSentence(parsed.text)
         if (display) {
           sendClient({
             type: 'live',
@@ -428,29 +428,46 @@ export function createAsrBridge({
   }
 
   const handleClientMessage = (data) => {
-    if (Buffer.isBuffer(data) || data instanceof ArrayBuffer) {
-      const buf = Buffer.isBuffer(data) ? data : Buffer.from(data)
-      sendUpstreamAudio(buf)
+    // 仅处理控制 JSON（string）或 PCM 二进制；禁止把 slide 文本 Buffer 当音频转发
+    if (typeof data === 'string') {
+      try {
+        const msg = JSON.parse(data)
+        if (msg.type === 'end') {
+          if (provider === 'iat' && upstream?.readyState === 1) {
+            upstream.send(buildIatAudioFrame('', 2))
+          } else if (provider === 'rtasr_llm' && upstream?.readyState === 1) {
+            const sid = llmRemoteSessionId || llmSessionId
+            upstream.send(buildRtasrLlmEndMessage(sid))
+          } else if (upstream?.readyState === 1) {
+            upstream.send(JSON.stringify({ end: true }))
+          }
+        }
+        if (msg.type === 'reconnect') {
+          connect()
+        }
+      } catch {
+        // ignore
+      }
       return
     }
 
-    try {
-      const msg = JSON.parse(data.toString())
-      if (msg.type === 'end') {
-        if (provider === 'iat' && upstream?.readyState === 1) {
-          upstream.send(buildIatAudioFrame('', 2))
-        } else if (provider === 'rtasr_llm' && upstream?.readyState === 1) {
-          const sid = llmRemoteSessionId || llmSessionId
-          upstream.send(buildRtasrLlmEndMessage(sid))
-        } else if (upstream?.readyState === 1) {
-          upstream.send(JSON.stringify({ end: true }))
+    if (Buffer.isBuffer(data) || data instanceof ArrayBuffer) {
+      // 兜底：误入的 JSON 控制帧不送上游
+      if (Buffer.isBuffer(data) && data.length > 0 && data.length < 512 && data[0] === 0x7b) {
+        try {
+          const msg = JSON.parse(data.toString())
+          if (msg?.type === 'slide' || msg?.type === 'end' || msg?.type === 'reconnect') {
+            if (msg.type === 'end' || msg.type === 'reconnect') {
+              handleClientMessage(data.toString())
+            }
+            return
+          }
+        } catch {
+          // fall through as audio
         }
       }
-      if (msg.type === 'reconnect') {
-        connect()
-      }
-    } catch {
-      // ignore
+      const buf = Buffer.isBuffer(data) ? data : Buffer.from(data)
+      sendUpstreamAudio(buf)
     }
   }
 

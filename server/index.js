@@ -75,6 +75,25 @@ function ownedSession(req, res) {
   return result.session
 }
 
+/** 判断 ws 消息是否为二进制音频（文本控制帧绝不能当 PCM 转给讯飞） */
+function isWsBinaryFrame(data, isBinary) {
+  if (typeof isBinary === 'boolean') return isBinary
+  if (typeof data === 'string') return false
+  if (!Buffer.isBuffer(data)) return true
+  // 无 isBinary 时的兜底：短 JSON 控制消息
+  if (data.length > 0 && data.length < 512 && (data[0] === 0x7b || data[0] === 0x5b)) {
+    try {
+      const msg = JSON.parse(data.toString())
+      if (msg && (msg.type === 'slide' || msg.type === 'end' || msg.type === 'reconnect')) {
+        return false
+      }
+    } catch {
+      // treat as binary
+    }
+  }
+  return true
+}
+
 const storage = multer.diskStorage({
   destination: UPLOAD_DIR,
   filename: (_req, file, cb) => {
@@ -616,8 +635,9 @@ wss.on('connection', (clientWs, { sessionId }) => {
     },
   })
 
-  clientWs.on('message', (data) => {
-    if (typeof data === 'string' || !(Buffer.isBuffer(data))) {
+  clientWs.on('message', (data, isBinary) => {
+    // 翻页会发 {"type":"slide",...}；若被当成 PCM 转给讯飞，上游会异常断开
+    if (!isWsBinaryFrame(data, isBinary)) {
       try {
         const msg = JSON.parse(data.toString())
         if (msg.type === 'slide') {
@@ -626,10 +646,15 @@ wss.on('connection', (clientWs, { sessionId }) => {
             currentSlide = n
             slideState.set(sessionId, currentSlide)
           }
+          return
+        }
+        if (msg.type === 'end' || msg.type === 'reconnect') {
+          bridge.handleClientMessage(typeof data === 'string' ? data : data.toString())
         }
       } catch {
-        // ignore
+        // ignore non-json text
       }
+      return
     }
     bridge.handleClientMessage(data)
   })
