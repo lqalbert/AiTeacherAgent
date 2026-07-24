@@ -137,9 +137,8 @@ export function buildReplayCues(
 ): ReplayCue[] {
   const finals = segments
     .filter((s) => {
-      const finalFlag = s.is_final
-      const isFinal = finalFlag === true || finalFlag === 1 || finalFlag == null
-      return isFinal && String(s.text || '').trim()
+      // DB 存 0/1；非 0 视为终句
+      return s.is_final !== 0 && String(s.text || '').trim()
     })
     .sort((a, b) => (a.start_ms ?? 0) - (b.start_ms ?? 0))
 
